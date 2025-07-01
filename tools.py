@@ -1,20 +1,30 @@
 import os
 import subprocess
 
-def run_shell_command(command: str) -> str:
+def run_shell_command(command: str, path: str) -> str:
     """
     Executes a shell command and returns its output and errors.
     Args:
         command (str): The shell command to execute.
     """
+    if command.strip().startswith("cd "):
+        try:
+            target_dir = command.strip()[3:].strip("'\" ")
+            new_path = os.path.abspath(os.path.join(path, target_dir))
+            os.chdir(new_path)
+            return f"Changed directory to: {new_path}"
+        except Exception as e:
+            return f"Failed to change directory: {e}"
     try:
         result = subprocess.run(
             command,
             shell=True,
             capture_output=True,
             text=True,
-            check=True  # This will raise an exception for non-zero exit codes
+            check=True,
+            cwd = path  # This will raise an exception for non-zero exit codes
         )
+        #print(os.getcwd())
         return f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     except subprocess.CalledProcessError as e:
         return f"Error executing command: {command}\nExit Code: {e.returncode}\nSTDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}"

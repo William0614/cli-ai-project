@@ -26,6 +26,9 @@ def get_ai_response(prompt: str) -> dict:
         # Start a chat session to maintain context
         chat = model.start_chat()
         response = chat.send_message(prompt)
+        # print(f"Response from Gemini: {response}")
+
+        # print(f"candidates: {response.candidates}")
 
         # Check if the model wants to call a tool
         if response.candidates[0].content.parts[0].function_call:
