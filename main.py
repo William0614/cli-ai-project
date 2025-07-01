@@ -1,47 +1,63 @@
 import asyncio
-import inspect # To check if a function is async
-from ai_core import get_ai_response
+import inspect
+from ai_core import *
 from tools import available_tools
 
+async def execute_tool_call(tool_call: dict):
+    """Executes a single tool call."""
+    tool_name = tool_call.get("name")
+    tool_args = tool_call.get("arguments", {})
+    
+    if tool_name in available_tools:
+        tool_function = available_tools[tool_name]
+        print(f"---\nExecuting: {tool_name}({tool_args})\n---")
+        if inspect.iscoroutinefunction(tool_function):
+            result = await tool_function(**tool_args)
+        else:
+            result = tool_function(**tool_args)
+        print(f"Result:\n{result}")
+    else:
+        print(f"Error: Unknown tool '{tool_name}'.")
+
 async def main():
-    """The main async loop for the CLI agent."""
-    print("Welcome to your Async AI-powered CLI. Type 'exit' to quit.")
+    """The main async loop for the autonomous agent."""
+    print("Autonomous Agent Started. Type 'exit' to quit.")
 
     while True:
-        prompt = input("Type your message > ")
+        prompt = input("\nType your message > ")
+        if not prompt:
+            continue # Skip empty inputs
         if prompt.lower() == "exit":
             print("Exiting...")
             break
 
-        if not prompt:
-            continue # Skip empty prompts
+        # Get the AI's decision on how to proceed
+        decision = await get_ai_decision(prompt)
 
-        # Get AI response asynchronously
-        ai_response = await get_ai_response(prompt)
+        if "plan" in decision:
+            # --- The AI decided to create a plan ---
+            plan = decision["plan"]
+            print("The AI has created a plan:")
+            for i, step in enumerate(plan, 1):
+                print(f"  Step {i}: {step['name']}({step['arguments']})")
+            
+            approval = input("\nShould I execute this plan? (yes/no): ").lower()
+            if approval == 'yes':
+                print("Executing plan...")
+                for step in plan:
+                    await execute_tool_call(step)
+                print("Plan execution finished.")
+            else:
+                print("Plan aborted.")
 
-        if "tool_name" in ai_response:
-            # If the AI response contains a tool call
-            tool_name = ai_response["tool_name"]
-            tool_args = ai_response["tool_args"]
+        elif "tool_call" in decision:
+            await execute_tool_call(decision["tool_call"])
+
+        elif "text" in decision:
+            print(f"AI: {decision['text']}")
             
-            if tool_name in available_tools:
-                # Get the tool function from the available tools
-                tool_function = available_tools[tool_name]
-                
-                print(f"---\nExecuting: {tool_name}({tool_args})\n---")
-                try:
-                    # Check if the tool is async or regular
-                    if inspect.iscoroutinefunction(tool_function):
-                        result = await tool_function(**tool_args)
-                    else:
-                        result = tool_function(**tool_args)
-                    print(f"Result:\n{result}")
-                except Exception as e:
-                    print(f"Error executing unknown tool '{tool_name}': {e}")
-            
-        elif "text" in ai_response:
-            print(f"AI: {ai_response['text']}")
+        else:
+            print(f"Sorry, I received an unexpected decision format: {decision}")
 
 if __name__ == "__main__":
-    # Start the asyncio event loop
     asyncio.run(main())
