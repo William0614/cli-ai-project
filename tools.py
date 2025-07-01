@@ -1,70 +1,45 @@
 import os
 import subprocess
+import asyncio
+import aiofiles
 
-def run_shell_command(command: str) -> str:
-    """
-    Executes a shell command and returns its output and errors.
-    Args:
-        command (str): The shell command to execute.
-    """
+async def run_shell_command(command: str) -> str:
+    """Executes a shell command and returns its output."""
     try:
-        result = subprocess.run(
+        process = await asyncio.create_subprocess_shell(
             command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            check=True  # This will raise an exception for non-zero exit codes
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
-        return f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
-    except subprocess.CalledProcessError as e:
-        return f"Error executing command: {command}\nExit Code: {e.returncode}\nSTDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}"
+        stdout, stderr = await process.communicate()
+        return f"STDOUT:\n{stdout.decode()}\nSTDERR:\n{stderr.decode()}"
     except Exception as e:
-        return f"An unexpected error occurred: {e}"
+        return f"Error executing command: {e}"
 
-def read_file(file_path: str) -> str:
-    """
-    Reads the content of a specified file.
-    Args:
-        file_path (str): The path to the file.
-    """
+async def read_file(file_path: str) -> str:
+    """Reads the content of a file."""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
-    except FileNotFoundError:
-        return f"Error: File not found at {file_path}"
+        async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+            return await f.read()
     except Exception as e:
         return f"Error reading file: {e}"
 
-def write_file(file_path: str, content: str) -> str:
-    """
-    Writes content to a specified file, overwriting it if it exists.
-    Args:
-        file_path (str): The path to the file.
-        content (str): The content to write to the file.
-    """
+async def write_file(file_path: str, content: str) -> str:
+    """Writes to a file."""
     try:
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(content)
+        async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
+            await f.write(content)
         return f"Successfully wrote to {file_path}"
     except Exception as e:
-        return f"Error writing to file: {e}"
+        return f"Error writing file: {e}"
 
 def list_directory(path: str = '.') -> str:
-    """
-    Lists the files and directories at a given path.
-    Args:
-        path (str): The directory path to list. Defaults to the current directory.
-    """
+    """Lists a directory."""
     try:
-        entries = os.listdir(path)
-        return "\n".join(entries)
-    except FileNotFoundError:
-        return f"Error: Directory not found at {path}"
+        return "\n".join(os.listdir(path))
     except Exception as e:
         return f"Error listing directory: {e}"
 
-# This dictionary maps tool names to the actual functions.
-# It's crucial for executing the tool the AI chooses.
 available_tools = {
     "run_shell_command": run_shell_command,
     "read_file": read_file,
@@ -72,3 +47,79 @@ available_tools = {
     "list_directory": list_directory,
 }
 
+# --- 3. TOOL SCHEMA (No changes needed here) ---
+
+tools_schema = [
+    {
+        "type": "function",
+        "function": {
+            "name": "run_shell_command",
+            "description": "Executes a shell command and returns its output.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "The shell command to execute."
+                    }
+                },
+                "required": ["command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Reads the content of a file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "The path to the file to read."
+                    }
+                },
+                "required": ["file_path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "Writes to a file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "The path to the file to write."
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The content to write to the file."
+                    }
+                },
+                "required": ["file_path", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_directory",
+            "description": "Lists the contents of a directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "The path of the directory to list. Defaults to current directory."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+]

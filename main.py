@@ -1,45 +1,47 @@
-
+import asyncio
+import inspect # To check if a function is async
 from ai_core import get_ai_response
-# Import the dictionary that maps tool names to functions
 from tools import available_tools
 
-def main():
-    """The main loop to run the CLI agent."""
-    print("Welcome to your AI-powered CLI. Type 'exit' to quit.")
+async def main():
+    """The main async loop for the CLI agent."""
+    print("Welcome to your Async AI-powered CLI. Type 'exit' to quit.")
 
     while True:
-        prompt = input("> ")
+        prompt = input("Type your message > ")
         if prompt.lower() == "exit":
             print("Exiting...")
             break
 
-        # Get the structured response from the AI
-        ai_response = get_ai_response(prompt)
+        if not prompt:
+            continue # Skip empty prompts
+
+        # Get AI response asynchronously
+        ai_response = await get_ai_response(prompt)
 
         if "tool_name" in ai_response:
-            # The AI wants to use a tool
+            # If the AI response contains a tool call
             tool_name = ai_response["tool_name"]
             tool_args = ai_response["tool_args"]
-
+            
             if tool_name in available_tools:
-                # Find the correct function from our dictionary
+                # Get the tool function from the available tools
                 tool_function = available_tools[tool_name]
                 
-                print(f"---\nExecuting tool: {tool_name} with arguments: {tool_args}\n---")
-                
-                # Execute the function with the arguments provided by the AI
+                print(f"---\nExecuting: {tool_name}({tool_args})\n---")
                 try:
-                    result = tool_function(**tool_args)
+                    # Check if the tool is async or regular
+                    if inspect.iscoroutinefunction(tool_function):
+                        result = await tool_function(**tool_args)
+                    else:
+                        result = tool_function(**tool_args)
                     print(f"Result:\n{result}")
                 except Exception as e:
-                    print(f"Error executing tool {tool_name}: {e}")
-            else:
-                print(f"Error: The AI tried to use an unknown tool: {tool_name}")
-        
+                    print(f"Error executing unknown tool '{tool_name}': {e}")
+            
         elif "text" in ai_response:
-            # The AI just wants to talk
-            print(f"Gemini: {ai_response['text']}")
+            print(f"AI: {ai_response['text']}")
 
 if __name__ == "__main__":
-    main()
-
+    # Start the asyncio event loop
+    asyncio.run(main())
