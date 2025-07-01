@@ -1,50 +1,52 @@
-
 import os
-import google.generativeai as genai
+import asyncio
+import json
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
-
 # Import the function definitions from tools.py
 # This is how the model knows what functions it can call.
-from tools import run_shell_command, read_file, write_file, list_directory
+from tools import tools_schema
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-# Create a generative model that knows about our tools
-# We pass the actual function objects to the model.
-model = genai.GenerativeModel(
-    model_name='gemini-1.5-flash',
-    tools=[run_shell_command, read_file, write_file, list_directory]
+# Create an async client pointing to your local server
+client = AsyncOpenAI(
+    base_url="http://localhost:8001/v1",
+    api_key="not-needed"
 )
 
-def get_ai_response(prompt: str) -> dict:
+async def get_ai_decision(prompt: str) -> dict:
     """
-    Gets a response from the Gemini model, which may be a function call or a text response.
-    Returns a dictionary containing the tool call information or a text response.
+    Asks the LLM to decide the best course of action for a given prompt.
+    """
+    system_prompt = f"""
+    You are an expert autonomous agent. Your job is to analyze a user's request and decide on the best course of action.
+    You have three choices:
+
+    1. If the request is simple and can be handled by a single tool call, respond with a JSON object containing a single key, "tool_call", which contains the details of the function to call.
+    Example: {{"tool_call": {{"name": "read_file", "arguments": {{"file_path": "/path/to/file"}}}}}}
+
+    2. If the request is complex and requires multiple steps, respond with a JSON object containing a single key, "plan", which is a list of tool call steps.
+    Example: {{"plan": [ {{"name": "read_file", ...}}, {{"name": "write_file", ...}} ]}}
+
+    3. If the request is a simple question or greeting that doesn't require a tool, respond with a JSON object containing a single key, "text", with your response.
+    Example: {{"text": "Hello! How can I help you today?"}}
+
+    Here are the available tools: {json.dumps(tools_schema, indent=2)}
     """
     try:
-        # Start a chat session to maintain context
-        chat = model.start_chat()
-        response = chat.send_message(prompt)
-        # print(f"Response from Gemini: {response}")
-
-        # print(f"candidates: {response.candidates}")
-
-        # Check if the model wants to call a tool
-        if response.candidates[0].content.parts[0].function_call:
-            function_call = response.candidates[0].content.parts[0].function_call
-            tool_name = function_call.name
-            tool_args = {key: value for key, value in function_call.args.items()}
-            return {
-                "tool_name": tool_name,
-                "tool_args": tool_args
-            }
-        else:
-            # If no tool is called, return the text response
-            return {
-                "text": response.text
-            }
+        response = await client.chat.completions.create(
+        model="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        response_format={"type": "json_object"}, # Force JSON output
+        )
+        decision = json.loads(response.choices[0].message.content)
+        return decision
 
     except Exception as e:
-        print(f"Error communicating with Gemini API: {e}")
-        return {"text": "An error occurred."}
+        print(f"Error getting agent decision: {e}")
+
+    return {"text": "Sorry, an error occurred."}
