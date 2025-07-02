@@ -1,5 +1,3 @@
-
-
 import asyncio
 import inspect
 import threading
@@ -40,9 +38,6 @@ class Spinner:
             self.thread.join()
 
 # --- Main Application Logic ---
-
-# Define critical tools that require user confirmation
-critical_tools = ["write_file", "run_shell_command"]
 
 async def execute_tool_call(tool_call: dict) -> str:
     tool_name = tool_call.get("name")
@@ -89,20 +84,41 @@ async def main():
         if "thought" in decision:
             print(Fore.BLUE + f"Thought: {decision['thought']}")
 
-        if "tool_call" in decision:
-            tool_name = decision["tool_call"].get("name")
-            
-            if tool_name in critical_tools:
-                approval = input(Fore.RED + f"Confirm execution of critical action '{tool_name}'? (yes/no): ").lower()
-                if approval == 'yes':
-                    summary = await execute_tool_call(decision["tool_call"])
-                    history.append(f"Tool Output: {summary}")
+        if "plan" in decision:
+            plan_results = []
+            for tool_call in decision["plan"]:
+                tool_name = tool_call.get("name")
+                is_critical = tool_call.get("is_critical", False)
+
+                if is_critical:
+                    approval = input(Fore.RED + f"Confirm execution of critical action '{tool_name}'? (yes/no): ").lower()
+                    if approval == 'yes':
+                        summary = await execute_tool_call(tool_call)
+                        plan_results.append(f"Tool {tool_name} executed: {summary}")
+                    else:
+                        print(Fore.RED + "Action aborted by user.")
+                        plan_results.append(f"Tool {tool_name} aborted by user.")
+                        break # Abort the rest of the plan
                 else:
-                    print(Fore.RED + "Action aborted by user.")
-                    history.append(f"Action aborted: {tool_name}")
+                    summary = await execute_tool_call(tool_call)
+                    plan_results.append(f"Tool {tool_name} executed: {summary}")
+            
+            # After executing the plan, feed the results back to the agent for a final response
+            history.append(f"Plan Execution Results: {'; '.join(plan_results)}")
+            
+            # Get a final text response from the agent based on the plan's outcome
+            spinner.start()
+            final_decision = await get_agent_decision(history)
+            spinner.stop()
+
+            if "text" in final_decision:
+                ai_response = final_decision["text"]
+                print(Fore.MAGENTA + f"AI: {ai_response}")
+                history.append(f"AI: {ai_response}")
             else:
-                summary = await execute_tool_call(decision["tool_call"])
-                history.append(f"Tool Output: {summary}")
+                error_msg = f"Sorry, I received an unexpected final decision format: {final_decision}"
+                print(Fore.RED + error_msg)
+                history.append(f"Error: {error_msg}")
 
         elif "text" in decision:
             ai_response = decision["text"]

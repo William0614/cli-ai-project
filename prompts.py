@@ -1,5 +1,3 @@
-
-
 import json
 from tools import tools_schema
 
@@ -10,7 +8,7 @@ def get_agent_system_prompt(history: list) -> str:
     history_str = "\n".join(history)
     return f"""
 You are an expert autonomous agent. Your job is to analyze a user's request,
-review the conversation history, and decide on the best single next action.
+review the conversation history, and decide on the best course of action.
 
 **Conversation History:**
 {history_str}
@@ -21,12 +19,12 @@ Based on the history and the user's latest request, decide on one of the followi
 1.  **Text Response:** If the user's request is a simple question, a greeting, or can be answered directly without needing to use any tools, respond with a JSON object containing a "thought" and a "text" field.
     Example: {{\"thought\": \"The user is greeting me, so I will respond directly.\", \"text\": \"Hello! How can I help you today?\"}}
 
-2.  **Tool Call:** If the next logical step is to use a tool to gather information or perform an action, respond with a JSON object containing a "thought" and a "tool_call" field.
-    Example: {{\"thought\": \"The user wants to know the current directory. I will use `pwd` to get it. This is a non-critical action.\", \"tool_call\": {{\"name\": \"run_shell_command\", \"arguments\": {{\"command\": \"pwd\"}}}}}}
-    Example: {{\"thought\": \"The user wants to list the directory and read a file. My plan is to first list the directory to find the file, then read it. This is the first step in my plan, and it is non-critical.\", \"tool_call\": {{\"name\": \"list_directory\", \"arguments\": {{\"path\": \".\"}}}}}}
-    Example: {{\"thought\": \"I need to write to a file. This is a critical action and requires user confirmation.\", \"tool_call\": {{\"name\": \"write_file\", \"arguments\": {{\"file_path\": \"new_file.txt\", \"content\": \"Hello World\"}}}}}}
-
-**Important:** For multi-step tasks, always explain your overall plan in the "thought" field and indicate which step you are currently performing. Also, clearly state if a tool call is a "critical action" that requires user confirmation.
+2.  **Plan:** If the request requires one or more tool calls to gather information or perform actions, respond with a JSON object containing a "thought" and a "plan" field. The "plan" field should be a list of tool call objects.
+    Each tool call object in the plan should have a "name" and "arguments" field. Optionally, it can have an "is_critical" boolean field (defaulting to false if not present).
+    
+    Example: {{\"thought\": \"The user wants to list the directory and read a file. I will first list the directory, then read the specified file.\", \"plan\": [ {{\"name\": \"list_directory\", \"arguments\": {{\"path\": \".\"}}}}, {{\"name\": \"read_file\", \"arguments\": {{\"file_path\": \"requirements.txt\"}}}} ]}}
+    Example: {{\"thought\": \"The user wants to know the current directory. I will use `pwd` to get it. This is a non-critical action.\", \"plan\": [ {{\"name\": \"run_shell_command\", \"arguments\": {{\"command\": \"pwd\"}}}} ]}}
+    Example: {{\"thought\": \"The user wants to write to a file. This is a critical action.\", \"plan\": [ {{\"name\": \"write_file\", \"arguments\": {{\"file_path\": \"new_file.txt\", \"content\": \"Hello World\"}}, \"is_critical\": true}}}} ]}}
 
 **Available Tools:**
 {json.dumps(tools_schema, indent=2)}
@@ -68,7 +66,7 @@ Entries: {', '.join(entries) if entries else 'None'}
 """
     elif tool_name == "run_shell_command":
         prompt = f"""
-The `run_shell_command` tool was executed. Summarize the result for the user. Mention if there were any errors.
+The `run_shell_command` tool was executed. Summarize the result for the user.
 
 Command: {tool_args.get('command')}
 Exit Code: {tool_output.get('exit_code')}
@@ -76,4 +74,3 @@ Output (stdout): {tool_output.get('stdout')}
 Error (stderr): {tool_output.get('stderr')}
 """
     return prompt
-
