@@ -21,7 +21,7 @@ Based on the history and the user's latest request, decide on one of the followi
 
 1.  **Text Response:** If the user's request is a simple question, a greeting, or can be answered directly without needing to use any tools, respond with a JSON object containing your text answer.
     Example: {{\"text\": \"Hello! How can I help you today?\"}}
-    Example: {{\"text\": \"You are currently in the directory: /Users/kimboyoon/Desktop/cli-ai-project\"}}
+    
 
 2.  **Tool Call:** If the next logical step is to use a tool to gather information or perform an action, respond with a JSON object for that single tool call.
     Example: {{\"tool_call\": {{\"name\": \"read_file\", \"arguments\": {{\"file_path\": \"/path/to/file\"}}}}}}
