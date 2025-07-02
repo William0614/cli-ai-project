@@ -1,3 +1,5 @@
+
+
 import asyncio
 import inspect
 import threading
@@ -39,7 +41,7 @@ class Spinner:
 
 # --- Main Application Logic ---
 
-async def execute_tool_call(tool_call: dict):
+async def execute_tool_call(tool_call: dict) -> str:
     tool_name = tool_call.get("name")
     tool_args = tool_call.get("arguments", {})
     
@@ -55,50 +57,45 @@ async def execute_tool_call(tool_call: dict):
         
         summary = await summarize_tool_result(tool_name, tool_args, raw_output)
         print(Fore.GREEN + summary)
+        return summary
     else:
-        print(Fore.RED + f"Error: Unknown tool '{tool_name}'.")
+        error_msg = f"Error: Unknown tool '{tool_name}'."
+        print(Fore.RED + error_msg)
+        return error_msg
 
 async def main():
     print(Fore.YELLOW + "Autonomous Agent Started. Type 'exit' to quit.")
     spinner = Spinner()
+    history = []
 
     while True:
-        prompt = input("\n> ")
-        if not prompt:
+        user_input = input("\n> ")
+        if not user_input:
             continue
-        if prompt.lower() == "exit":
+        if user_input.lower() == "exit":
             break
+
+        history.append(f"User: {user_input}")
 
         # Start the spinner right before the async call
         spinner.start()
-        decision = await get_agent_decision(prompt)
+        decision = await get_agent_decision(history)
         # Stop the spinner immediately after the call returns
         spinner.stop()
-        # print("\n")
 
-        if "plan" in decision:
-            plan = decision["plan"]
-            print(Fore.YELLOW + "The AI has proposed a plan:")
-            for i, step in enumerate(plan, 1):
-                print(Fore.YELLOW + f"  Step {i}: {step['name']}({step['arguments']})")
-            
-            approval = input("\nExecute this plan? (yes/no): ").lower()
-            if approval == 'yes':
-                print("Executing plan...")
-                for step in plan:
-                    await execute_tool_call(step)
-                print(Fore.GREEN + "Plan execution finished.")
-            else:
-                print(Fore.RED + "Plan aborted.")
-
-        elif "tool_call" in decision:
-            await execute_tool_call(decision["tool_call"])
+        if "tool_call" in decision:
+            summary = await execute_tool_call(decision["tool_call"])
+            history.append(f"Tool Output: {summary}")
 
         elif "text" in decision:
-            print(Fore.MAGENTA + f"AI: {decision['text']}")
+            ai_response = decision["text"]
+            print(Fore.MAGENTA + f"AI: {ai_response}")
+            history.append(f"AI: {ai_response}")
             
         else:
-            print(Fore.RED + f"Sorry, I received an unexpected decision format: {decision}")
+            error_msg = f"Sorry, I received an unexpected decision format: {decision}"
+            print(Fore.RED + error_msg)
+            history.append(f"Error: {error_msg}")
 
 if __name__ == "__main__":
     try:
