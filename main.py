@@ -40,7 +40,6 @@ class Spinner:
 # --- Main Application Logic ---
 
 async def execute_tool_call(tool_call: dict):
-    # ... (this function remains the same)
     tool_name = tool_call.get("name")
     tool_args = tool_call.get("arguments", {})
     
@@ -77,7 +76,6 @@ async def main():
         spinner.stop()
 
         if "plan" in decision:
-            # ... (rest of the logic remains the same)
             plan = decision["plan"]
             print(Fore.YELLOW + "The AI has proposed a plan:")
             for i, step in enumerate(plan, 1):
