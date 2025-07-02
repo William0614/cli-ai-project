@@ -1,5 +1,3 @@
-
-
 import asyncio
 import inspect
 import threading
@@ -82,6 +80,9 @@ async def main():
         decision = await get_agent_decision(history)
         # Stop the spinner immediately after the call returns
         spinner.stop()
+
+        if "thought" in decision:
+            print(Fore.BLUE + f"Thought: {decision['thought']}")
 
         if "tool_call" in decision:
             summary = await execute_tool_call(decision["tool_call"])
