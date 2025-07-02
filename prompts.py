@@ -1,3 +1,6 @@
+
+
+
 import json
 from tools import tools_schema
 
@@ -16,11 +19,12 @@ review the conversation history, and decide on the best single next action.
 **Your Task:**
 Based on the history and the user's latest request, decide on one of the following:
 
-1.  **Tool Call:** If the next logical step is to use a tool, respond with a JSON object for that single tool call.
-    Example: {{\"tool_call\": {{\"name\": \"read_file\", \"arguments\": {{\"file_path\": \"/path/to/file\"}}}}}}
+1.  **Text Response:** If the user's request is a simple question, a greeting, or can be answered directly without needing to use any tools, respond with a JSON object containing your text answer.
+    Example: {{\"text\": \"Hello! How can I help you today?\"}}
+    Example: {{\"text\": \"You are currently in the directory: /Users/kimboyoon/Desktop/cli-ai-project\"}}
 
-2.  **Final Answer:** If you have sufficient information to answer the user's request, respond with a JSON object containing your final answer.
-    Example: {{\"text\": \"I have successfully read the file as you requested.\"}}
+2.  **Tool Call:** If the next logical step is to use a tool to gather information or perform an action, respond with a JSON object for that single tool call.
+    Example: {{\"tool_call\": {{\"name\": \"read_file\", \"arguments\": {{\"file_path\": \"/path/to/file\"}}}}}}
 
 **Available Tools:**
 {json.dumps(tools_schema, indent=2)}
@@ -43,7 +47,7 @@ Raw Output: {json.dumps(tool_output)}
 The `read_file` tool was just used. Based on the following content, write a brief confirmation that the file was read successfully. If the file content is short, you can include it. If it's long, just confirm it was read.
 
 File Path: {tool_args.get('file_path')}
-File Content Snippet: \"{tool_output.get('content', '')[:100]}...\"
+File Content Snippet: \"{tool_output.get('content', '')[:100]}...\""
 """
     elif tool_name == "write_file":
         prompt = f"""
