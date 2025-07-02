@@ -1,5 +1,3 @@
-
-
 import json
 from tools import tools_schema
 
@@ -83,3 +81,8 @@ Error (stderr): {tool_output.get('stderr')}
 """
     return prompt
 
+def get_final_summary_system_prompt():
+    """
+    Returns a system prompt specifically for generating a final summary of a plan's execution.
+    """
+    return "You are a helpful assistant. Summarize the provided plan execution results in a concise, user-friendly text format. Focus on the overall outcome and any important details or errors."

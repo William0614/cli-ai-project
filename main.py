@@ -86,70 +86,75 @@ async def main():
 
         if "plan" in decision:
             plan = decision["plan"]
-            print(Fore.YELLOW + "The AI has proposed a plan:")
-            for i, step in enumerate(plan, 1):
-                tool_name = step.get("name")
-                tool_args = step.get("arguments", {})
-                is_critical = step.get("is_critical", False)
-                critical_tag = Fore.RED + "[CRITICAL]" if is_critical else ""
-                print(Fore.YELLOW + f"  Step {i}: {tool_name}({tool_args}) {critical_tag}")
-            
-            overall_approval = input("
-Execute this plan? (yes/no): ").lower()
-            if overall_approval == 'yes':
-                plan_results = []
-                for tool_call in plan:
-                    tool_name = tool_call.get("name")
-                    is_critical = tool_call.get("is_critical", False)
+            plan_results = []
 
-                    if is_critical:
-                        individual_approval = input(Fore.RED + f"Confirm execution of critical action '{tool_name}({tool_call.get('arguments', {})})'? (yes/no): ").lower()
-                        if individual_approval == 'yes':
-                            summary = await execute_tool_call(tool_call)
-                            plan_results.append(f"Tool {tool_name} executed: {summary}")
-                        else:
-                            print(Fore.RED + "Action aborted by user.")
-                            plan_results.append(f"Tool {tool_name} aborted by user.")
-                            break # Abort the rest of the plan
-                    else:
+            if len(plan) == 1:
+                # Single step plan: execute directly without showing plan or asking overall approval
+                tool_call = plan[0]
+                tool_name = tool_call.get("name")
+                is_critical = tool_call.get("is_critical", False)
+
+                if is_critical:
+                    individual_approval = input(Fore.RED + f"Confirm execution of critical action '{tool_name}({tool_call.get('arguments', {})})'? (yes/no):").lower()
+                    if individual_approval == 'yes':
                         summary = await execute_tool_call(tool_call)
                         plan_results.append(f"Tool {tool_name} executed: {summary}")
-                
-                # After executing the plan, feed the results back to the agent for a final response
-                history.append(f"Plan Execution Results: {'; '.join(plan_results)}")
-                
-                # Get a final text response from the agent based on the plan's outcome
-                spinner.start()
-                final_decision = await get_agent_decision(history)
-                spinner.stop()
-
-                if "text" in final_decision:
-                    ai_response = final_decision["text"]
-                    print(Fore.MAGENTA + f"AI: {ai_response}")
-                    history.append(f"AI: {ai_response}")
+                    else:
+                        print(Fore.RED + "Action aborted by user.")
+                        plan_results.append(f"Tool {tool_name} aborted by user.")
                 else:
-                    error_msg = f"Sorry, I received an unexpected final decision format: {final_decision}"
-                    print(Fore.RED + error_msg)
-                    history.append(f"Error: {error_msg}")
+                    summary = await execute_tool_call(tool_call)
+                    plan_results.append(f"Tool {tool_name} executed: {summary}")
+
             else:
-                print(Fore.RED + "Plan aborted by user.")
-                history.append("Plan aborted by user.")
+                # Multi-step plan: show plan and ask for overall approval
+                print(Fore.YELLOW + "The AI has proposed a plan:")
+                for i, step in enumerate(plan, 1):
+                    tool_name = step.get("name")
+                    tool_args = step.get("arguments", {})
+                    is_critical = step.get("is_critical", False)
+                    critical_tag = Fore.RED + "[CRITICAL]" if is_critical else ""
+                    print(Fore.YELLOW + f"  Step {i}: {tool_name}({tool_args}) {critical_tag}")
+                
+                overall_approval = input("Execute this plan? (yes/no):").lower()
+                if overall_approval == 'yes':
+                    for tool_call in plan:
+                        tool_name = tool_call.get("name")
+                        is_critical = tool_call.get("is_critical", False)
 
-        elif "text" in decision:
-            ai_response = decision["text"]
-            print(Fore.MAGENTA + f"AI: {ai_response}")
-            history.append(f"AI: {ai_response}")
+                        if is_critical:
+                            individual_approval = input(Fore.RED + f"Confirm execution of critical action '{tool_name}({tool_call.get('arguments', {})})'? (yes/no):").lower()
+                            if individual_approval == 'yes':
+                                summary = await execute_tool_call(tool_call)
+                                plan_results.append(f"Tool {tool_name} executed: {summary}")
+                            else:
+                                print(Fore.RED + "Action aborted by user.")
+                                plan_results.append(f"Tool {tool_name} aborted by user.")
+                                break # Abort the rest of the plan
+                        else:
+                            summary = await execute_tool_call(tool_call)
+                            plan_results.append(f"Tool {tool_name} executed: {summary}")
+                else:
+                    print(Fore.RED + "Plan aborted by user.")
+                    history.append("Plan aborted by user.")
+
+            # After executing the plan (or single step), feed the results back to the agent for a final response
+            if plan_results: # Only append if something was executed
+                history.append(f"Plan Execution Results: {'; '.join(plan_results)}")
             
-        else:
-            error_msg = f"Sorry, I received an unexpected decision format: {decision}"
-            print(Fore.RED + error_msg)
-            history.append(f"Error: {error_msg}")
+            # Get a final text response from the agent based on the plan's outcome
+            spinner.start()
+            final_decision = await get_agent_decision(history, force_text_response=True)
+            spinner.stop()
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nExiting...")
+            if "text" in final_decision:
+                ai_response = final_decision["text"]
+                print(Fore.MAGENTA + f"AI: {ai_response}")
+                history.append(f"AI: {ai_response}")
+            else:
+                error_msg = f"Sorry, I received an unexpected final decision format: {final_decision}"
+                print(Fore.RED + error_msg)
+                history.append(f"Error: {error_msg}")
 
         elif "text" in decision:
             ai_response = decision["text"]
