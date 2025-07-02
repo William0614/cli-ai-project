@@ -11,7 +11,7 @@ load_dotenv()
 
 # Create an async client pointing to your local server
 client = AsyncOpenAI(
-    base_url="http://localhost:8001/v1",
+    base_url="http://localhost:8002/v1",
     api_key="not-needed"
 )
 
@@ -32,7 +32,7 @@ async def get_ai_decision(prompt: str) -> dict:
     3. If the request is a simple question or greeting that doesn't require a tool, respond with a JSON object containing a single key, "text", with your response.
     Example: {{"text": "Hello! How can I help you today?"}}
 
-    Here are the available tools: {json.dumps(tools_schema, indent=2)}
+    Here are the available tools: {json.dumps(tools_schema, indent=5)}
     """
     try:
         response = await client.chat.completions.create(
@@ -45,6 +45,7 @@ async def get_ai_decision(prompt: str) -> dict:
         )
         decision = json.loads(response.choices[0].message.content)
         return decision
+
 
     except Exception as e:
         print(f"Error getting agent decision: {e}")
