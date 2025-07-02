@@ -40,7 +40,6 @@ class Spinner:
 # --- Main Application Logic ---
 
 async def execute_tool_call(tool_call: dict):
-    # ... (this function remains the same)
     tool_name = tool_call.get("name")
     tool_args = tool_call.get("arguments", {})
     
@@ -64,7 +63,7 @@ async def main():
     spinner = Spinner()
 
     while True:
-        prompt = input("> ")
+        prompt = input("\n> ")
         if not prompt:
             continue
         if prompt.lower() == "exit":
@@ -75,9 +74,9 @@ async def main():
         decision = await get_agent_decision(prompt)
         # Stop the spinner immediately after the call returns
         spinner.stop()
+        # print("\n")
 
         if "plan" in decision:
-            # ... (rest of the logic remains the same)
             plan = decision["plan"]
             print(Fore.YELLOW + "The AI has proposed a plan:")
             for i, step in enumerate(plan, 1):

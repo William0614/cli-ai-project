@@ -8,14 +8,13 @@ from tools import tools_schema
 load_dotenv()
 
 client = AsyncOpenAI(
-    base_url=os.getenv("LOCAL_LLM_URL"),
-    api_key='ollama',
+    base_url="http://localhost:8001/v1",
+    api_key="not-needed"
 )
 
 async def get_agent_decision(prompt: str) -> dict:
     """Gets the agent's decision on how to proceed."""
-    # ... (this function remains the same as before)
-    system_prompt = f""""
+    system_prompt = f"""
     You are an expert autonomous agent. Your job is to analyze a user's request
     and decide on the best course of action.
 
@@ -37,11 +36,11 @@ async def get_agent_decision(prompt: str) -> dict:
 
     Here are the available tools:
     {json.dumps(tools_schema, indent=2)}
-    """"
+    """
 
     try:
         response = await client.chat.completions.create(
-            model="deepseek-coder-v2",
+            model="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
@@ -60,17 +59,17 @@ async def summarize_tool_result(tool_name: str, tool_args: dict, tool_output: di
     """
     Asks the LLM to generate a user-friendly summary of a tool's execution result.
     """
-    prompt = f""""
+    prompt = f"""
     A tool has just been executed. Please generate a brief, user-friendly sentence
     explaining the outcome. Be concise and clear.
 
     Tool Name: {tool_name}
     Arguments Used: {json.dumps(tool_args)}
     Raw Output: {json.dumps(tool_output)}
-    """"
+    """
     try:
         response = await client.chat.completions.create(
-            model="deepseek-coder-v2",
+            model="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant who summarizes technical output for a user."},
                 {"role": "user", "content": prompt}
