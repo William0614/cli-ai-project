@@ -1,3 +1,5 @@
+
+
 import json
 from tools import tools_schema
 
@@ -20,11 +22,17 @@ Based on the history and the user's latest request, decide on one of the followi
     Example: {{\"thought\": \"The user is greeting me, so I will respond directly.\", \"text\": \"Hello! How can I help you today?\"}}
 
 2.  **Plan:** If the request requires one or more tool calls to gather information or perform actions, respond with a JSON object containing a "thought" and a "plan" field. The "plan" field should be a list of tool call objects.
-    Each tool call object in the plan should have a "name" and "arguments" field. Optionally, it can have an "is_critical" boolean field (defaulting to false if not present).
+    Each tool call object in the plan must have a "name" and "arguments" field. It must also have an "is_critical" boolean field.
     
-    Example: {{\"thought\": \"The user wants to list the directory and read a file. I will first list the directory, then read the specified file.\", \"plan\": [ {{\"name\": \"list_directory\", \"arguments\": {{\"path\": \".\"}}}}, {{\"name\": \"read_file\", \"arguments\": {{\"file_path\": \"requirements.txt\"}}}} ]}}
-    Example: {{\"thought\": \"The user wants to know the current directory. I will use `pwd` to get it. This is a non-critical action.\", \"plan\": [ {{\"name\": \"run_shell_command\", \"arguments\": {{\"command\": \"pwd\"}}}} ]}}
-    Example: {{\"thought\": \"The user wants to write to a file. This is a critical action.\", \"plan\": [ {{\"name\": \"write_file\", \"arguments\": {{\"file_path\": \"new_file.txt\", \"content\": \"Hello World\"}}, \"is_critical\": true}}}} ]}}
+    **Determining `is_critical`:**
+    *   `write_file`: Always `true`.
+    *   `run_shell_command`: `true` if the command contains potentially destructive operations (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`).
+    *   All other tools (`read_file`, `list_directory`): Always `false`.
+
+    Example: {{\"thought\": \"The user wants to list the directory and read a file. I will first list the directory, then read the specified file.\", \"plan\": [ {{\"name\": \"list_directory\", \"arguments\": {{\"path\": \".\"}}, \"is_critical\": false}}, {{\"name\": \"read_file\", \"arguments\": {{\"file_path\": \"requirements.txt\"}}, \"is_critical\": false}} ]}}
+    Example: {{\"thought\": \"The user wants to know the current directory. I will use `pwd` to get it.\", \"plan\": [ {{\"name\": \"run_shell_command\", \"arguments\": {{\"command\": \"pwd\"}}, \"is_critical\": false}} ]}}
+    Example: {{\"thought\": \"The user wants to delete a file. This is a critical action.\", \"plan\": [ {{\"name\": \"run_shell_command\", \"arguments\": {{\"command\": \"rm -rf temp_file.txt\"}}, \"is_critical\": true}} ]}}
+    Example: {{\"thought\": \"The user wants to write to a file. This is a critical action.\", \"plan\": [ {{\"name\": \"write_file\", \"arguments\": {{\"file_path\": \"new_file.txt\", \"content\": \"Hello World\"}}, \"is_critical\": true}} ]}}
 
 **Available Tools:**
 {json.dumps(tools_schema, indent=2)}
@@ -66,7 +74,7 @@ Entries: {', '.join(entries) if entries else 'None'}
 """
     elif tool_name == "run_shell_command":
         prompt = f"""
-The `run_shell_command` tool was executed. Summarize the result for the user.
+The `run_shell_command` tool was executed. Summarize the result for the user. Mention if there were any errors.
 
 Command: {tool_args.get('command')}
 Exit Code: {tool_output.get('exit_code')}
@@ -74,3 +82,4 @@ Output (stdout): {tool_output.get('stdout')}
 Error (stderr): {tool_output.get('stderr')}
 """
     return prompt
+
