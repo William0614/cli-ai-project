@@ -32,7 +32,7 @@ async def get_ai_decision(prompt: str) -> dict:
     3. If the request is a simple question or greeting that doesn't require a tool, respond with a JSON object containing a single key, "text", with your response.
     Example: {{"text": "Hello! How can I help you today?"}}
 
-    Here are the available tools: {json.dumps(tools_schema, indent=5)}
+    Here are the available tools: {json.dumps(tools_schema, indent=4)}
     """
     try:
         response = await client.chat.completions.create(

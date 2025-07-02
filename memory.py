@@ -1,13 +1,14 @@
 import os
 from pathlib import Path
 
+memory_file = Path(os.getcwd()).resolve() / ".cli_ai" / "CLI_AI.md"
+memory_dir = Path(os.getcwd()).resolve() / ".cli_ai"
+
 def save_memory(fact: str):
     if not fact or not isinstance(fact, str):
         raise ValueError("You must provide a non-empty string as a fact.")
 
-    memory_dir = Path.home() / ".cli_ai"
-    memory_file = memory_dir / "CLI_AI.md"
-    section_header = "## CLI AI Added Memories"
+    section_header = "Memories"
 
     # Ensure the directory exists
     memory_dir.mkdir(parents=True, exist_ok=True)

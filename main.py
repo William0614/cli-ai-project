@@ -6,10 +6,10 @@ from memory import save_memory
 from pathlib import Path
 import os
 
-# memory_file = Path.home() / ".cli_ai" / "CLI_AI.md"
+memory_file = Path(os.getcwd()).resolve() / ".cli_ai" / "CLI_AI.md"
 current_path = os.getcwd()
 
-
+cur_conv = " "
 async def execute_tool_call(tool_call: dict, current_path: str):
     """Executes a single tool call."""
     tool_name = tool_call.get("name")
@@ -31,18 +31,21 @@ async def execute_tool_call(tool_call: dict, current_path: str):
 async def main():
     """The main async loop for the autonomous agent."""
     print("Autonomous Agent Started. Type 'exit' to quit.")
-
+    global cur_conv
+    cnt = 1
     while True:
         prompt = input("\nType your message > ")
+        save_memory(f" User's prompt {cnt}: " + prompt + '\n')
         if not prompt:
             continue # Skip empty inputs
         if prompt.lower() == "exit":
 
             print("Exiting...")
-            # with open(memory_file, "w", encoding="utf-8") as f:
-            #    f.write(" ")  # This clears the file
+            with open(memory_file, "w", encoding="utf-8") as f:
+                f.write(" ")  # This clears the file
             break
-
+        save_memory(f"Your response {cnt}: ")
+        cnt = cnt + 1
         current_path = os.getcwd()   
         # print(current_path) 
         # Get the AI's decision on how to proceed
@@ -51,8 +54,10 @@ async def main():
         if "plan" in decision:
             # --- The AI decided to create a plan ---
             plan = decision["plan"]
+            save_memory("The AI has created a plan:")
             print("The AI has created a plan:")
             for i, step in enumerate(plan, 1):
+                save_memory(f"  Step {i}: {step['name']}({step['arguments']})")
                 print(f"  Step {i}: {step['name']}({step['arguments']})")
             
             approval = input("\nShould I execute this plan? (yes/no): ").lower()
@@ -60,8 +65,10 @@ async def main():
                 print("Executing plan...")
                 for step in plan:
                     await execute_tool_call(step)
+                
                 print("Plan execution finished.")
             else:
+                save_memory("Plan aborted")
                 print("Plan aborted.")
 
 
@@ -69,10 +76,27 @@ async def main():
             await execute_tool_call(decision["tool_call"],current_path)
 
         elif "text" in decision:
+            save_memory(f"AI: {decision['text']}")
             print(f"AI: {decision['text']}")
             
         else:
+            save_memory(f"Sorry, I received an unexpected decision format: {decision}")
             print(f"Sorry, I received an unexpected decision format: {decision}")
+
+        with open(memory_file,"r") as f:
+            lines = f.readlines()
+            end_index = 2
+            for i, line in enumerate(lines):
+                if line.strip().startswith("-  User's"):
+                    end_index = i
+                    break
+                    i = i+1
+            
+            data = lines[2:end_index+1][::-1]
+            data_str = ' '.join(data)
+            tmp = data_str + cur_conv
+            cur_conv = tmp
+            print(cur_conv)
 
 if __name__ == "__main__":
     asyncio.run(main())
