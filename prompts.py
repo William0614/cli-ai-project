@@ -1,3 +1,5 @@
+
+
 import json
 from tools import tools_schema
 
@@ -20,8 +22,11 @@ Based on the history and the user's latest request, decide on one of the followi
     Example: {{\"thought\": \"The user is greeting me, so I will respond directly.\", \"text\": \"Hello! How can I help you today?\"}}
 
 2.  **Tool Call:** If the next logical step is to use a tool to gather information or perform an action, respond with a JSON object containing a "thought" and a "tool_call" field.
-    Example: {{\"thought\": \"The user wants to know the current directory, so I will use `pwd`.\", \"tool_call\": {{\"name\": \"run_shell_command\", \"arguments\": {{\"command\": \"pwd\"}}}}}}
-    Example: {{\"thought\": \"The user wants to list the directory and read a file. I will first list the directory to find the file.\", \"tool_call\": {{\"name\": \"list_directory\", \"arguments\": {{\"path\": \".\"}}}}}}
+    Example: {{\"thought\": \"The user wants to know the current directory. I will use `pwd` to get it. This is a non-critical action.\", \"tool_call\": {{\"name\": \"run_shell_command\", \"arguments\": {{\"command\": \"pwd\"}}}}}}
+    Example: {{\"thought\": \"The user wants to list the directory and read a file. My plan is to first list the directory to find the file, then read it. This is the first step in my plan, and it is non-critical.\", \"tool_call\": {{\"name\": \"list_directory\", \"arguments\": {{\"path\": \".\"}}}}}}
+    Example: {{\"thought\": \"I need to write to a file. This is a critical action and requires user confirmation.\", \"tool_call\": {{\"name\": \"write_file\", \"arguments\": {{\"file_path\": \"new_file.txt\", \"content\": \"Hello World\"}}}}}}
+
+**Important:** For multi-step tasks, always explain your overall plan in the "thought" field and indicate which step you are currently performing. Also, clearly state if a tool call is a "critical action" that requires user confirmation.
 
 **Available Tools:**
 {json.dumps(tools_schema, indent=2)}
@@ -71,3 +76,4 @@ Output (stdout): {tool_output.get('stdout')}
 Error (stderr): {tool_output.get('stderr')}
 """
     return prompt
+

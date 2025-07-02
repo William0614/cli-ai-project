@@ -1,3 +1,5 @@
+
+
 import asyncio
 import inspect
 import threading
@@ -38,6 +40,9 @@ class Spinner:
             self.thread.join()
 
 # --- Main Application Logic ---
+
+# Define critical tools that require user confirmation
+critical_tools = ["write_file", "run_shell_command"]
 
 async def execute_tool_call(tool_call: dict) -> str:
     tool_name = tool_call.get("name")
@@ -85,8 +90,19 @@ async def main():
             print(Fore.BLUE + f"Thought: {decision['thought']}")
 
         if "tool_call" in decision:
-            summary = await execute_tool_call(decision["tool_call"])
-            history.append(f"Tool Output: {summary}")
+            tool_name = decision["tool_call"].get("name")
+            
+            if tool_name in critical_tools:
+                approval = input(Fore.RED + f"Confirm execution of critical action '{tool_name}'? (yes/no): ").lower()
+                if approval == 'yes':
+                    summary = await execute_tool_call(decision["tool_call"])
+                    history.append(f"Tool Output: {summary}")
+                else:
+                    print(Fore.RED + "Action aborted by user.")
+                    history.append(f"Action aborted: {tool_name}")
+            else:
+                summary = await execute_tool_call(decision["tool_call"])
+                history.append(f"Tool Output: {summary}")
 
         elif "text" in decision:
             ai_response = decision["text"]
