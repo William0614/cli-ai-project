@@ -1,6 +1,8 @@
+
 import asyncio
 import aiofiles
 import os
+from typing import Optional
 
 # --- 1. ASYNC TOOL IMPLEMENTATIONS ---
 
@@ -21,12 +23,27 @@ async def run_shell_command(command: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-async def read_file(file_path: str) -> dict:
-    """Reads a file asynchronously and returns its content."""
+async def read_file(file_path: str, offset: Optional[int] = None, limit: Optional[int] = None) -> dict:
+    """Reads a file asynchronously and returns its content, with optional line-based slicing."""
+    if offset is not None and offset < 0:
+        return {"error": "Offset must be a non-negative number."}
+    if limit is not None and limit <= 0:
+        return {"error": "Limit must be a positive number."}
+    if offset is not None and limit is None:
+        return {"error": "Limit must be provided when offset is used."}
+
     try:
         async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-            content = await f.read()
-            return {"content": content}
+            if offset is not None and limit is not None:
+                lines = await f.readlines()
+                sliced_lines = lines[offset : offset + limit]
+                content = "".join(sliced_lines)
+                return {"content": content, "lines_read": len(sliced_lines)}
+            else:
+                content = await f.read()
+                return {"content": content}
+    except FileNotFoundError:
+        return {"error": f"File not found at {file_path}"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -47,7 +64,7 @@ def list_directory(path: str = '.') -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-# --- 2. TOOL REGISTRY (No changes needed) ---
+# --- 2. TOOL REGISTRY ---
 available_tools = {
     "run_shell_command": run_shell_command,
     "read_file": read_file,
@@ -55,7 +72,7 @@ available_tools = {
     "list_directory": list_directory,
 }
 
-# --- 3. TOOL SCHEMA (No changes needed) ---
+# --- 3. TOOL SCHEMA ---
 tools_schema = [
     {
         "type": "function",
@@ -75,11 +92,13 @@ tools_schema = [
         "type": "function",
         "function": {
             "name": "read_file",
-            "description": "Reads the content of a file.",
+            "description": "Reads the content of a file, optionally from a specific line offset and for a certain number of lines.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "file_path": {"type": "string", "description": "The path to the file."}
+                    "file_path": {"type": "string", "description": "The absolute path to the file."},
+                    "offset": {"type": "integer", "description": "The 0-based line number to start reading from."},
+                    "limit": {"type": "integer", "description": "The maximum number of lines to read."}
                 },
                 "required": ["file_path"]
             }
