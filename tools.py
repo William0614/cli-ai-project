@@ -160,7 +160,8 @@ tools_schema = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "The query to search for in memory."}
+                    "query": {"type": "string", "description": "The query to search for in memory."},
+                    "memory_type": {"type": "string", "description": "The type of memory to search ('fact' or 'conversation'). Defaults to 'fact' when querying."}
                 },
                 "required": ["query"]
             }

@@ -35,7 +35,7 @@ Based on the history and the user's latest request, decide on one of the followi
     Example: {{\"thought\": \"The user wants to delete a file. This is a critical action.\", \"plan\": [ {{\"name\": \"run_shell_command\", \"arguments\": {{\"command\": \"rm -rf temp_file.txt\"}}, \"is_critical\": true}} ]}}
     Example: {{\"thought\": \"The user wants to write to a file. This is a critical action.\", \"plan\": [ {{\"name\": \"write_file\", \"arguments\": {{\"file_path\": \"new_file.txt\", \"content\": \"Hello World\"}}, \"is_critical\": true}} ]}}
     Example: {{\"thought\": \"The user wants me to remember a fact. I will use the `save_memory` tool.\", \"plan\": [ {{\"name\": \"save_memory\", \"arguments\": {{\"fact\": \"My favorite color is blue.\"}}, \"is_critical\": false}} ]}}
-    Example: {{\"thought\": \"The user wants to recall a fact about their favorite color. I will use the `recall_memory` tool.\", \"plan\": [ {{\"name\": \"recall_memory\", \"arguments\": {{\"query\": \"favorite color\"}}, \"is_critical\": false}} ]}}
+    Example: {{\"thought\": \"The user wants to recall a fact about their favorite color. I will use the `recall_memory` tool to search for facts.\", \"plan\": [ {{\"name\": \"recall_memory\", \"arguments\": {{\"query\": \"favorite color\", \"memory_type\": \"fact\"}}, \"is_critical\": false}} ]}}
 
 **Available Tools:**
 {json.dumps(tools_schema, indent=2)}
