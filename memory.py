@@ -27,19 +27,35 @@ def recall_memory(query: str = "", memory_type: Optional[str] = None, limit: Opt
     """Recalls relevant facts from the agent's long-term memory based on a query and optional type/limit."""
     memory = _load_memory()
     
+    # Start with all memory, then filter
     filtered_memory = memory
+
+    # 1. Filter by memory_type if provided
     if memory_type:
         filtered_memory = [item for item in filtered_memory if item.get("type") == memory_type]
 
-    relevant_facts = []
+    # 2. If a query is provided, it's a search for relevant facts, not conversation history
     if query:
-        relevant_facts = [item["fact"] for item in filtered_memory if query.lower() in item["fact"].lower()]
+        # If memory_type wasn't specified, default to searching 'fact' type for queries
+        if not memory_type:
+            fact_memory = [item for item in memory if item.get("type") == "fact"]
+        else:
+            fact_memory = filtered_memory # Use the already filtered memory if type was specified
+        
+        # Perform the relevance search on the appropriate memory slice
+        relevant_facts = [item["fact"] for item in fact_memory if query.lower() in item["fact"].lower()]
     else:
+        # If no query, just return the (potentially type-filtered) memory
         relevant_facts = [item["fact"] for item in filtered_memory]
 
-    # Apply limit, typically for conversation history (most recent first)
+
+    # 3. Apply limit, typically for conversation history (most recent first)
+    # This should be applied after filtering and searching
     if limit is not None:
-        relevant_facts = relevant_facts[-limit:] # Get the most recent 'limit' items
+        # Sort by timestamp descending to get the most recent items
+        sorted_memory = sorted(filtered_memory, key=lambda x: x.get("timestamp", 0), reverse=True)
+        relevant_facts = [item["fact"] for item in sorted_memory[:limit]]
+
 
     if relevant_facts:
         return {"status": "success", "facts": relevant_facts}
