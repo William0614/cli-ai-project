@@ -1,4 +1,3 @@
-
 import asyncio
 import inspect
 import threading
@@ -153,7 +152,7 @@ async def main():
             # Get a final text response from the agent based on the plan's outcome
             spinner.start()
             # Recall memory again to include plan execution results for final decision
-            recalled_memory_for_final = recall_memory(memory_type="conversation", limit=10).get("facts", []) + recall_memory(memory_type="fact").get("facts", [])
+            recalled_memory_for_final = recall_memory(memory_type="conversation", limit=10).get("facts", []) + recall_memory(query=user_input, memory_type="fact").get("facts", []) # Pass user_input for relevance
             final_decision = await get_agent_decision(recalled_memory_for_final, force_text_response=True)
             spinner.stop()
 
