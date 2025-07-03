@@ -1,3 +1,5 @@
+
+
 import json
 from tools import tools_schema
 
@@ -25,12 +27,14 @@ Based on the history and the user's latest request, decide on one of the followi
     **Determining `is_critical`:**
     *   `write_file`: Always `true`.
     *   `run_shell_command`: `true` if the command contains potentially destructive operations (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`).
-    *   All other tools (`read_file`, `list_directory`): Always `false`.
+    *   All other tools (`read_file`, `list_directory`, `save_memory`, `recall_memory`): Always `false`.
 
     Example: {{\"thought\": \"The user wants to list the directory and read a file. I will first list the directory, then read the specified file.\", \"plan\": [ {{\"name\": \"list_directory\", \"arguments\": {{\"path\": \".\"}}, \"is_critical\": false}}, {{\"name\": \"read_file\", \"arguments\": {{\"file_path\": \"requirements.txt\"}}, \"is_critical\": false}} ]}}
     Example: {{\"thought\": \"The user wants to know the current directory. I will use `pwd` to get it.\", \"plan\": [ {{\"name\": \"run_shell_command\", \"arguments\": {{\"command\": \"pwd\"}}, \"is_critical\": false}} ]}}
     Example: {{\"thought\": \"The user wants to delete a file. This is a critical action.\", \"plan\": [ {{\"name\": \"run_shell_command\", \"arguments\": {{\"command\": \"rm -rf temp_file.txt\"}}, \"is_critical\": true}} ]}}
     Example: {{\"thought\": \"The user wants to write to a file. This is a critical action.\", \"plan\": [ {{\"name\": \"write_file\", \"arguments\": {{\"file_path\": \"new_file.txt\", \"content\": \"Hello World\"}}, \"is_critical\": true}} ]}}
+    Example: {{\"thought\": \"The user wants me to remember a fact. I will use the `save_memory` tool.\", \"plan\": [ {{\"name\": \"save_memory\", \"arguments\": {{\"fact\": \"My favorite color is blue.\"}}, \"is_critical\": false}} ]}}
+    Example: {{\"thought\": \"The user wants to recall a fact about their favorite color. I will use the `recall_memory` tool.\", \"plan\": [ {{\"name\": \"recall_memory\", \"arguments\": {{\"query\": \"favorite color\"}}, \"is_critical\": false}} ]}}
 
 **Available Tools:**
 {json.dumps(tools_schema, indent=2)}
@@ -86,3 +90,4 @@ def get_final_summary_system_prompt():
     Returns a system prompt specifically for generating a final summary of a plan's execution.
     """
     return "You are a helpful assistant. Summarize the provided plan execution results in a concise, user-friendly text format. Focus on the overall outcome and any important details or errors."
+

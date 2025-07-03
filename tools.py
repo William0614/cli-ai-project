@@ -1,8 +1,8 @@
-
 import asyncio
 import aiofiles
 import os
 from typing import Optional
+from memory import save_memory, recall_memory
 
 # --- 1. ASYNC TOOL IMPLEMENTATIONS ---
 
@@ -70,6 +70,8 @@ available_tools = {
     "read_file": read_file,
     "write_file": write_file,
     "list_directory": list_directory,
+    "save_memory": save_memory,
+    "recall_memory": recall_memory,
 }
 
 # --- 3. TOOL SCHEMA ---
@@ -130,6 +132,34 @@ tools_schema = [
                     "path": {"type": "string", "description": "The directory path."}
                 },
                 "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_memory",
+            "description": "Saves a fact to the agent's long-term memory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fact": {"type": "string", "description": "The fact to save."}
+                },
+                "required": ["fact"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recall_memory",
+            "description": "Recalls relevant facts from the agent's long-term memory based on a query.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The query to search for in memory."}
+                },
+                "required": ["query"]
             }
         }
     }
