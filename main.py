@@ -1,3 +1,4 @@
+
 import asyncio
 import inspect
 import threading
@@ -77,10 +78,10 @@ async def main():
         # Save user input to memory as a conversation turn
         save_memory(f"User: {user_input}", memory_type="conversation")
 
-        # Construct history for the agent: recent conversation + all saved facts
+        # Construct history for the agent: recent conversation + relevant saved facts
         conversation_history = recall_memory(memory_type="conversation", limit=10).get("facts", []) # Last 10 conversation turns
-        saved_facts = recall_memory(memory_type="fact").get("facts", []) # All explicitly saved facts
-        history_for_agent = conversation_history + saved_facts
+        relevant_facts = recall_memory(query=user_input, memory_type="fact").get("facts", []) # Only relevant saved facts
+        history_for_agent = conversation_history + relevant_facts
 
         # Start the spinner right before the async call
         spinner.start()

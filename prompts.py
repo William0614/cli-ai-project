@@ -1,5 +1,3 @@
-
-
 import json
 from tools import tools_schema
 
@@ -10,9 +8,9 @@ def get_agent_system_prompt(history: list) -> str:
     history_str = "\n".join(history)
     return f"""
 You are an expert autonomous agent. Your job is to analyze a user's request,
-review the conversation history, and decide on the best course of action.
+review the conversation history and relevant facts, and decide on the best course of action.
 
-**Conversation History:**
+**Conversation History and Relevant Facts:**
 {history_str}
 
 **Your Task:**
@@ -26,7 +24,7 @@ Based on the history and the user's latest request, decide on one of the followi
     
     **Determining `is_critical`:**
     *   `write_file`: Always `true`.
-    *   `run_shell_command`: `true` if the command contains potentially destructive operations (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`).
+    *   `run_shell_command`: `true` if the command modifies the system or data (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`, `git commit`, `git push`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`, `git status`, `git log`).
     *   All other tools (`read_file`, `list_directory`, `save_memory`, `recall_memory`): Always `false`.
 
     Example: {{\"thought\": \"The user wants to list the directory and read a file. I will first list the directory, then read the specified file.\", \"plan\": [ {{\"name\": \"list_directory\", \"arguments\": {{\"path\": \".\"}}, \"is_critical\": false}}, {{\"name\": \"read_file\", \"arguments\": {{\"file_path\": \"requirements.txt\"}}, \"is_critical\": false}} ]}}
@@ -76,7 +74,7 @@ Entries: {', '.join(entries) if entries else 'None'}
 """
     elif tool_name == "run_shell_command":
         prompt = f"""
-The `run_shell_command` tool was executed. Summarize the result for the user. Mention if there were any errors.
+The `run_shell_command` tool was executed. Summarize the result for the user.
 
 Command: {tool_args.get('command')}
 Exit Code: {tool_output.get('exit_code')}
@@ -90,4 +88,3 @@ def get_final_summary_system_prompt():
     Returns a system prompt specifically for generating a final summary of a plan's execution.
     """
     return "You are a helpful assistant. Summarize the provided plan execution results in a concise, user-friendly text format. Focus on the overall outcome and any important details or errors."
-
