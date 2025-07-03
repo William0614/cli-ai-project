@@ -1,14 +1,18 @@
+
+
 import json
 from tools import tools_schema
 
-def get_agent_system_prompt(history: list) -> str:
+def get_agent_system_prompt(history: list, current_working_directory: str) -> str:
     """
-    Returns the primary system prompt for the autonomous agent, including conversation history.
+    Returns the primary system prompt for the autonomous agent, including conversation history and current working directory.
     """
     history_str = "\n".join(history)
     return f"""
 You are an expert autonomous agent. Your job is to analyze a user's request,
 review the conversation history and relevant facts, and decide on the best course of action.
+
+**Current Working Directory:** {current_working_directory}
 
 **Conversation History and Relevant Facts:**
 {history_str}
@@ -18,6 +22,7 @@ Based on the history and the user's latest request, decide on one of the followi
 
 1.  **Text Response:** If the user's request is a simple question, a greeting, or can be answered directly without needing to use any tools, respond with a JSON object containing a "thought" and a "text" field.
     Example: {{\"thought\": \"The user is greeting me, so I will respond directly.\", \"text\": \"Hello! How can I help you today?\"}}
+    Example: {{\"thought\": \"The user is asking for my geographical location, which I cannot determine. I will respond directly.\", \"text\": \"As an AI, I don't have a physical location on Earth.\"}}
 
 2.  **Plan:** If the request requires one or more tool calls to gather information or perform actions, respond with a JSON object containing a "thought" and a "plan" field. The "plan" field should be a list of tool call objects.
     Each tool call object in the plan must have a "name" and "arguments" field. It must also have an "is_critical" boolean field.
@@ -74,7 +79,7 @@ Entries: {', '.join(entries) if entries else 'None'}
 """
     elif tool_name == "run_shell_command":
         prompt = f"""
-The `run_shell_command` tool was executed. Summarize the result for the user.
+The `run_shell_command` tool was executed. Summarize the result for the user. Mention if there were any errors.
 
 Command: {tool_args.get('command')}
 Exit Code: {tool_output.get('exit_code')}
@@ -88,3 +93,4 @@ def get_final_summary_system_prompt():
     Returns a system prompt specifically for generating a final summary of a plan's execution.
     """
     return "You are a helpful assistant. Summarize the provided plan execution results in a concise, user-friendly text format. Focus on the overall outcome and any important details or errors."
+

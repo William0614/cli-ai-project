@@ -1,4 +1,3 @@
-
 import os
 import json
 from openai import AsyncOpenAI
@@ -12,14 +11,13 @@ client = AsyncOpenAI(
     api_key="not-needed"
 )
 
-async def get_agent_decision(history: list, force_text_response: bool = False) -> dict:
-    """Gets the agent's decision on how to proceed based on conversation history."""
+async def get_agent_decision(history: list, current_working_directory: str, force_text_response: bool = False) -> dict:
+    """Gets the agent's decision on how to proceed based on conversation history and current working directory."""
     if force_text_response:
         system_prompt = get_final_summary_system_prompt()
-        # Forcing text response, so the last message in history is the plan execution results
         user_message = history[-1]
     else:
-        system_prompt = get_agent_system_prompt(history)
+        system_prompt = get_agent_system_prompt(history, current_working_directory)
         user_message = history[-1] # Pass the latest user message
 
     try:
@@ -29,7 +27,7 @@ async def get_agent_decision(history: list, force_text_response: bool = False) -
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            response_format={"type": "json_object"} if not force_text_response else None, # Force JSON output for agent decision, but not for final summary
+            response_format={"type": "json_object"} if not force_text_response else None,
         )
         
         if force_text_response:

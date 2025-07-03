@@ -1,9 +1,12 @@
+
+
 import asyncio
 import inspect
 import threading
 import itertools
 import time
 import sys
+import os # Import os module
 from ai_core import get_agent_decision, summarize_tool_result
 from tools import available_tools # Keep available_tools for execute_tool_call
 from memory import save_memory, recall_memory # Import memory functions directly
@@ -40,10 +43,42 @@ class Spinner:
 
 # --- Main Application Logic ---
 
+# Global variable to track the current working directory
+current_working_directory = os.getcwd() # Initialize with the actual current working directory
+
 async def execute_tool_call(tool_call: dict) -> str:
+    global current_working_directory # Declare global to modify it
+
     tool_name = tool_call.get("name")
     tool_args = tool_call.get("arguments", {})
     
+    if tool_name == "run_shell_command":
+        command = tool_args.get("command", "")
+        # Update current_working_directory if a 'cd' command is executed
+        if command.strip().startswith("cd "):
+            new_path = command.strip()[3:].strip()
+            # Handle absolute and relative paths
+            if os.path.isabs(new_path):
+                target_path = new_path
+            else:
+                target_path = os.path.join(current_working_directory, new_path)
+            
+            # Normalize path (e.g., resolve '..' and '.')
+            target_path = os.path.normpath(target_path)
+
+            if os.path.isdir(target_path):
+                current_working_directory = target_path
+                summary = f"Changed directory to {current_working_directory}"
+                print(Fore.GREEN + summary)
+                return summary
+            else:
+                summary = f"Error: Directory not found: {new_path}"
+                print(Fore.RED + summary)
+                return summary
+        
+        # For other shell commands, execute in the current_working_directory
+        tool_args["directory"] = current_working_directory # Pass directory to run_shell_command
+
     if tool_name in available_tools:
         tool_function = available_tools[tool_name]
         
@@ -65,7 +100,6 @@ async def execute_tool_call(tool_call: dict) -> str:
 async def main():
     print(Fore.YELLOW + "Autonomous Agent Started. Type 'exit' to quit.")
     spinner = Spinner()
-    # history = [] # Removed history array
 
     while True:
         user_input = input("\n> ")
@@ -81,6 +115,9 @@ async def main():
         conversation_history = recall_memory(memory_type="conversation", limit=10).get("facts", []) # Last 10 conversation turns
         relevant_facts = recall_memory(query=user_input, memory_type="fact").get("facts", []) # Only relevant saved facts
         history_for_agent = conversation_history + relevant_facts
+
+        # Add current working directory to the history for the agent's context
+        history_for_agent.append(f"Current Working Directory: {current_working_directory}")
 
         # Start the spinner right before the async call
         spinner.start()
