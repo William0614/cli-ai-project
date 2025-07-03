@@ -26,7 +26,11 @@ def save_memory(fact: str, memory_type: str = "fact") -> Dict[str, str]:
 def recall_memory(query: str = "", memory_type: Optional[str] = None, limit: Optional[int] = None) -> Dict[str, Any]:
     """Recalls relevant facts from the agent's long-term memory based on a query and optional type/limit."""
     memory = _load_memory()
-    
+
+    # If a query is provided and no memory_type is specified, default to 'fact'
+    if query and not memory_type:
+        memory_type = "fact"
+
     filtered_memory = memory
     if memory_type:
         filtered_memory = [item for item in filtered_memory if item.get("type") == memory_type]
@@ -39,7 +43,7 @@ def recall_memory(query: str = "", memory_type: Optional[str] = None, limit: Opt
 
     # Apply limit, typically for conversation history (most recent first)
     if limit is not None:
-        relevant_facts = relevant_facts[-limit:] # Get the most recent 'limit' items
+        relevant_facts = relevant_facts[-limit:]
 
     if relevant_facts:
         return {"status": "success", "facts": relevant_facts}
