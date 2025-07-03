@@ -31,7 +31,7 @@ async def run_shell_command(command: str, file_path: str) -> dict:
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await process.communicate()
-            save_memory(f"{stdout.decode()}")
+            # save_memory(f"{stdout.decode()}")
             return {
                 "stdout": stdout.decode(),
                 "stderr": stderr.decode(),
@@ -41,22 +41,24 @@ async def run_shell_command(command: str, file_path: str) -> dict:
             return {"error": str(e)}
 
 
-async def read_file(file_path: str) -> dict:
+async def read_file(file_path: str, destination: str) -> dict:
     """Reads a file asynchronously and returns its content."""
+    final_path = file_path + '/' + destination
     try:
-        async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+        async with aiofiles.open(final_path, 'r', encoding='utf-8') as f:
             content = await f.read()
             return {"content": content}
     except Exception as e:
         save_memory(f"Error reading file: {e}")
         return {"error": str(e)}
 
-async def write_file(file_path: str, content: str) -> dict:
+async def write_file(file_path: str, destination: str, content: str) -> dict:
     """Writes to a file asynchronously and returns a success status."""
+    final_path = file_path + '/' + destination
     try:
-        async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(final_path, 'w', encoding='utf-8') as f:
             await f.write(content)
-        return {"status": "success", "message": f"Successfully wrote to {file_path}"}
+        return {"status": "success", "message": f"Successfully wrote to {final_path}"}
     except Exception as e:
         save_memory(f"Error writing to file: {e}")
         return {"error": str(e)}
@@ -96,7 +98,7 @@ tools_schema = [
                         "description": "The absolute or relative path to the file."
                     }
                 },
-                "required": ["command", "path"] 
+                "required": ["command", "file_path"] 
             }
         }
     },
@@ -108,9 +110,16 @@ tools_schema = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "file_path": {"type": "string", "description": "The path to the file."}
+                    "file_path": {
+                        "type": "string", 
+                        "description": "The current path."
+                    },
+                    "destination": {
+                        "type": "string", 
+                        "description": "The file the user wants to read."
+                    }
                 },
-                "required": ["file_path"]
+                "required": ["file_path", "destination"]
             }
         }
     },
@@ -122,10 +131,20 @@ tools_schema = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "file_path": {"type": "string", "description": "The path to the file."},
-                    "content": {"type": "string", "description": "The content to write."}
+                    "file_path": {
+                        "type": "string", 
+                        "description": "The current path."
+                    },
+                    "destination": {
+                        "type": "string", 
+                        "description": "The file the user wants to write to."
+                    },
+                    "conent": {
+                        "type": "string", 
+                        "description": "The content the user wants to write."
+                    }
                 },
-                "required": ["file_path", "content"]
+                "required": ["file_path", "destination", "content"]
             }
         }
     },

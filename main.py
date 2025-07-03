@@ -91,9 +91,11 @@ async def main():
             break
         save_memory(f"Your response {cnt}: ")
         cnt = cnt + 1
+        global current_path
         current_path = os.getcwd()   
         spinner.start()
-        decision = await get_agent_decision(prompt)
+        # print(current_path)
+        decision = await get_agent_decision(prompt, current_path, cur_conv)
         # Stop the spinner immediately after the call returns
         spinner.stop()
 
@@ -110,7 +112,7 @@ async def main():
             if approval == 'yes':
                 print("Executing plan...")
                 for step in plan:
-                    await execute_tool_call(step)
+                    await execute_tool_call(step,current_path)
                 print(Fore.GREEN + "Plan execution finished.")
             else:
                 save_memory("Plan aborted")
@@ -138,9 +140,9 @@ async def main():
             
             data = lines[2:end_index+1][::-1]
             data_str = ' '.join(data)
-            tmp = data_str + cur_conv
+            tmp = cur_conv + data_str 
             cur_conv = tmp
-            print(cur_conv)
+            # print(cur_conv)
 
 if __name__ == "__main__":
     try:
