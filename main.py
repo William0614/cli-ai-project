@@ -1,5 +1,3 @@
-
-
 import asyncio
 import inspect
 import threading
@@ -77,7 +75,8 @@ async def execute_tool_call(tool_call: dict) -> str:
                 return summary
         
         # For other shell commands, execute in the current_working_directory
-        tool_args["directory"] = current_working_directory # Pass directory to run_shell_command
+        # The run_shell_command tool itself will use this argument
+        tool_args["directory"] = current_working_directory 
 
     if tool_name in available_tools:
         tool_function = available_tools[tool_name]
@@ -117,11 +116,11 @@ async def main():
         history_for_agent = conversation_history + relevant_facts
 
         # Add current working directory to the history for the agent's context
-        history_for_agent.append(f"Current Working Directory: {current_working_directory}")
+        # This is now handled by passing it as a separate argument to get_agent_decision
 
         # Start the spinner right before the async call
         spinner.start()
-        decision = await get_agent_decision(history_for_agent)
+        decision = await get_agent_decision(history_for_agent, current_working_directory) # Pass current_working_directory
         # Stop the spinner immediately after the call returns
         spinner.stop()
 
@@ -190,7 +189,7 @@ async def main():
             spinner.start()
             # Recall memory again to include plan execution results for final decision
             recalled_memory_for_final = recall_memory(memory_type="conversation", limit=10).get("facts", []) + recall_memory(query=user_input, memory_type="fact").get("facts", []) # Pass user_input for relevance
-            final_decision = await get_agent_decision(recalled_memory_for_final, force_text_response=True)
+            final_decision = await get_agent_decision(recalled_memory_for_final, current_working_directory, force_text_response=True) # Pass current_working_directory
             spinner.stop()
 
             if "text" in final_decision:

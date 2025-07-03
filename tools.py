@@ -1,3 +1,4 @@
+
 import asyncio
 import aiofiles
 import os
@@ -6,13 +7,14 @@ from memory import save_memory, recall_memory
 
 # --- 1. ASYNC TOOL IMPLEMENTATIONS ---
 
-async def run_shell_command(command: str) -> dict:
+async def run_shell_command(command: str, directory: Optional[str] = None) -> dict:
     """Executes a shell command asynchronously and returns its structured output."""
     try:
         process = await asyncio.create_subprocess_shell(
             command,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
+            cwd=directory # Use the provided directory
         )
         stdout, stderr = await process.communicate()
         return {
@@ -84,7 +86,8 @@ tools_schema = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "command": {"type": "string", "description": "The command to execute."}
+                    "command": {"type": "string", "description": "The command to execute."},
+                    "directory": {"type": "string", "description": "The directory to execute the command in. Defaults to the current working directory."}
                 },
                 "required": ["command"]
             }
