@@ -1,4 +1,3 @@
-
 import asyncio
 import inspect
 import threading
@@ -6,7 +5,8 @@ import itertools
 import time
 import sys
 from ai_core import get_agent_decision, summarize_tool_result
-from tools import available_tools, save_memory, recall_memory # Import memory tools
+from tools import available_tools # Keep available_tools for execute_tool_call
+from memory import save_memory, recall_memory # Import memory functions directly
 from colorama import init, Fore
 
 init(autoreset=True)
@@ -74,14 +74,13 @@ async def main():
         if user_input.lower() == "exit":
             break
 
-        # Save user input to memory
-        save_memory(f"User: {user_input}")
+        # Save user input to memory as a conversation turn
+        save_memory(f"User: {user_input}", memory_type="conversation")
 
-        # Recall memory to build history for the agent
-        # For simplicity, recalling all memory. In a real app, you'd recall relevant recent memory.
-        recalled_memory = recall_memory(query="").get("facts", [])
-        # Ensure recalled_memory is a list of strings for the prompt
-        history_for_agent = [fact for fact in recalled_memory]
+        # Construct history for the agent: recent conversation + all saved facts
+        conversation_history = recall_memory(memory_type="conversation", limit=10).get("facts", []) # Last 10 conversation turns
+        saved_facts = recall_memory(memory_type="fact").get("facts", []) # All explicitly saved facts
+        history_for_agent = conversation_history + saved_facts
 
         # Start the spinner right before the async call
         spinner.start()
@@ -144,37 +143,37 @@ async def main():
                             plan_results.append(f"Tool {tool_name} executed: {summary}")
                 else:
                     print(Fore.RED + "Plan aborted by user.")
-                    save_memory("Plan aborted by user.") # Save to memory
+                    save_memory("Plan aborted by user.", memory_type="conversation") # Save to memory
 
             # After executing the plan (or single step), feed the results back to the agent for a final response
             if plan_results: # Only append if something was executed
-                save_memory(f"Plan Execution Results: {'; '.join(plan_results)}") # Save to memory
+                save_memory(f"Plan Execution Results: {'; '.join(plan_results)}", memory_type="conversation") # Save to memory
             
             # Get a final text response from the agent based on the plan's outcome
             spinner.start()
             # Recall memory again to include plan execution results for final decision
-            recalled_memory_for_final = recall_memory(query="").get("facts", [])
+            recalled_memory_for_final = recall_memory(memory_type="conversation", limit=10).get("facts", []) + recall_memory(memory_type="fact").get("facts", [])
             final_decision = await get_agent_decision(recalled_memory_for_final, force_text_response=True)
             spinner.stop()
 
             if "text" in final_decision:
                 ai_response = final_decision["text"]
                 print(Fore.MAGENTA + f"AI: {ai_response}")
-                save_memory(f"AI: {ai_response}") # Save to memory
+                save_memory(f"AI: {ai_response}", memory_type="conversation") # Save to memory
             else:
                 error_msg = f"Sorry, I received an unexpected final decision format: {final_decision}"
                 print(Fore.RED + error_msg)
-                save_memory(f"Error: {error_msg}") # Save to memory
+                save_memory(f"Error: {error_msg}", memory_type="conversation") # Save to memory
 
         elif "text" in decision:
             ai_response = decision["text"]
             print(Fore.MAGENTA + f"AI: {ai_response}")
-            save_memory(f"AI: {ai_response}") # Save to memory
+            save_memory(f"AI: {ai_response}", memory_type="conversation") # Save to memory
             
         else:
             error_msg = f"Sorry, I received an unexpected decision format: {decision}"
             print(Fore.RED + error_msg)
-            save_memory(f"Error: {error_msg}") # Save to memory
+            save_memory(f"Error: {error_msg}", memory_type="conversation") # Save to memory
 
 if __name__ == "__main__":
     try:
