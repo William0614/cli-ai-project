@@ -1,6 +1,6 @@
-
 import json
 import os
+import time
 
 MEMORY_FILE = "agent_memory.json"
 
@@ -17,7 +17,7 @@ def _save_memory(memory):
 def save_memory(fact: str) -> dict:
     """Saves a fact to the agent's long-term memory."""
     memory = _load_memory()
-    memory.append({"fact": fact, "timestamp": os.path.getmtime(MEMORY_FILE)}) # Simple timestamp
+    memory.append({"fact": fact, "timestamp": time.time()})
     _save_memory(memory)
     return {"status": "success", "message": "Fact saved to memory."}
 
