@@ -1,5 +1,3 @@
-
-
 import json
 from tools import tools_schema
 
@@ -86,6 +84,24 @@ Exit Code: {tool_output.get('exit_code')}
 Output (stdout): {tool_output.get('stdout')}
 Error (stderr): {tool_output.get('stderr')}
 """
+    elif tool_name == "save_memory":
+        prompt = f"""
+The `save_memory` tool was used. Confirm that the fact was saved.
+
+Fact: {tool_args.get('fact')}
+Result: {json.dumps(tool_output)}
+"""
+    elif tool_name == "recall_memory":
+        facts = tool_output.get('facts', [])
+        if facts:
+            prompt = f"""
+The `recall_memory` tool was used. The following relevant facts were recalled:
+{json.dumps(facts, indent=2)}
+"""
+        else:
+            prompt = f"""
+The `recall_memory` tool was used. No relevant facts were found for the query '{tool_args.get('query')}'.
+"""
     return prompt
 
 def get_final_summary_system_prompt():
@@ -93,4 +109,3 @@ def get_final_summary_system_prompt():
     Returns a system prompt specifically for generating a final summary of a plan's execution.
     """
     return "You are a helpful assistant. Summarize the provided plan execution results in a concise, user-friendly text format. Focus on the overall outcome and any important details or errors."
-
