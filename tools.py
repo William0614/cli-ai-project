@@ -87,7 +87,7 @@ tools_schema = [
             "description": "Executes a shell command.",
             "parameters": {
                 "type": "object",
-                ""properties": {
+                "properties": {
                     "command": {"type": "string", "description": "The command to execute."},
                     "directory": {"type": "string", "description": "The directory to execute the command in. Defaults to the current working directory."}
                 },
