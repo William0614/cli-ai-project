@@ -19,8 +19,8 @@ review the conversation history and relevant facts, and decide on the best cours
 Based on the history and the user's latest request, decide on one of the following:
 
 1.  **Text Response:** If the user's request is a simple question, a greeting, or can be answered directly without needing to use any tools, respond with a JSON object containing a "thought" and a "text" field.
-    Example: {{\"thought\": \"The user is greeting me, so I will respond directly.\", \"text\": \"Hello! How can I help you today?\"}}
-    Example: {{\"thought\": \"The user is asking for my geographical location, which I cannot determine. I will respond directly.\", \"text\": \"As an AI, I don't have a physical location on Earth.\"}}
+    Example: {json.dumps({"thought": "The user is greeting me, so I will respond directly.", "text": "Hello! How can I help you today?"})}
+    Example: {json.dumps({"thought": "The user is asking for my geographical location, which I cannot determine. I will respond directly.", "text": "As an AI, I don't have a physical location on Earth."})}
 
 2.  **Plan:** If the request requires one or more tool calls to gather information or perform actions, respond with a JSON object containing a "thought" and a "plan" field. The "plan" field should be a list of tool call objects.
     Each tool call object in the plan must have a "name" and "arguments" field. It must also have an "is_critical" boolean field.
@@ -30,12 +30,12 @@ Based on the history and the user's latest request, decide on one of the followi
     *   `run_shell_command`: `true` if the command modifies the system or data (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`, `git commit`, `git push`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`, `git status`, `git log`).
     *   All other tools (`read_file`, `list_directory`, `save_memory`, `recall_memory`): Always `false`.
 
-    Example: {{\"thought\": \"The user wants to list the directory and read a file. I will first list the directory, then read the specified file.\", \"plan\": [ {{\"name\": \"list_directory\", \"arguments\": {{\"path\": \".\"}}, \"is_critical\": false}}, {{\"name\": \"read_file\", \"arguments\": {{\"file_path\": \"requirements.txt\"}}, \"is_critical\": false}} ]}}
-    Example: {{\"thought\": \"The user wants to know the current directory. I will use `pwd` to get it.\", \"plan\": [ {{\"name\": \"run_shell_command\", \"arguments\": {{\"command\": \"pwd\"}}, \"is_critical\": false}} ]}}
-    Example: {{\"thought\": \"The user wants to delete a file. This is a critical action.\", \"plan\": [ {{\"name\": \"run_shell_command\", \"arguments\": {{\"command\": \"rm -rf temp_file.txt\"}}, \"is_critical\": true}} ]}}
-    Example: {{\"thought\": \"The user wants to write to a file. This is a critical action.\", \"plan\": [ {{\"name\": \"write_file\", \"arguments\": {{\"file_path\": \"new_file.txt\", \"content\": \"Hello World\"}}, \"is_critical\": true}} ]}}
-    Example: {{\"thought\": \"The user wants me to remember a fact. I will use the `save_memory` tool.\", \"plan\": [ {{\"name\": \"save_memory\", \"arguments\": {{\"fact\": \"My favorite color is blue.\"}}, \"is_critical\": false}} ]}}
-    Example: {{\"thought\": \"The user wants to recall a fact about their favorite color. I will use the `recall_memory` tool to search for facts.\", \"plan\": [ {{\"name\": \"recall_memory\", \"arguments\": {{\"query\": \"favorite color\", \"memory_type\": \"fact\"}}, \"is_critical\": false}} ]}}
+    Example: {json.dumps({"thought": "The user wants to list the directory and read a file. I will first list the directory, then read the specified file.", "plan": [ {"name": "list_directory", "arguments": {"path": "."}, "is_critical": False}, {"name": "read_file", "arguments": {"file_path": "requirements.txt"}, "is_critical": False} ]})}
+    Example: {json.dumps({"thought": "The user wants to know the current directory. I will use `pwd` to get it.", "plan": [ {"name": "run_shell_command", "arguments": {"command": "pwd"}, "is_critical": False} ]})}
+    Example: {json.dumps({"thought": "The user wants to delete a file. This is a critical action.", "plan": [ {"name": "run_shell_command", "arguments": {"command": "rm -rf temp_file.txt"}, "is_critical": True} ]})}
+    Example: {json.dumps({"thought": "The user wants to write to a file. This is a critical action.", "plan": [ {"name": "write_file", "arguments": {"file_path": "new_file.txt", "content": "Hello World"}, "is_critical": True} ]})}
+    Example: {json.dumps({"thought": "The user wants me to remember a fact. I will use the `save_memory` tool.", "plan": [ {"name": "save_memory", "arguments": {"fact": "My favorite color is blue."}, "is_critical": False} ]})}
+    Example: {json.dumps({"thought": "The user wants to recall a fact about their favorite color. I will use the `recall_memory` tool to search for facts using semantic search.", "plan": [ {"name": "recall_memory", "arguments": {"query": "favorite color", "memory_type": "fact"}, "is_critical": False} ]})}
 
 **Available Tools:**
 {json.dumps(tools_schema, indent=2)}
@@ -100,7 +100,7 @@ The `recall_memory` tool was used. The following relevant facts were recalled:
 """
         else:
             prompt = f"""
-The `recall_memory` tool was used. No relevant facts were found for the query '{tool_args.get('query')}'.
+The `recall_memory` tool was used. No relevant facts were found for the query '{tool_args.get('query')}'
 """
     return prompt
 

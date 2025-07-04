@@ -3,6 +3,7 @@ import json
 import os
 import time
 from typing import List, Dict, Any, Optional
+from semantic_search import semantic_search_facts
 
 MEMORY_FILE = "agent_memory.json"
 
@@ -23,7 +24,7 @@ def save_memory(fact: str, memory_type: str = "fact") -> Dict[str, str]:
     _save_memory(memory)
     return {"status": "success", "message": "Fact saved to memory."}
 
-def recall_memory(query: str = "", memory_type: Optional[str] = None, limit: Optional[int] = None) -> Dict[str, Any]:
+async def recall_memory(query: str = "", memory_type: Optional[str] = None, limit: Optional[int] = None) -> Dict[str, Any]:
     """Recalls relevant facts from the agent's long-term memory based on a query and optional type/limit."""
     memory = _load_memory()
 
@@ -35,13 +36,13 @@ def recall_memory(query: str = "", memory_type: Optional[str] = None, limit: Opt
     if memory_type:
         filtered_memory = [item for item in filtered_memory if item.get("type") == memory_type]
 
-    relevant_facts = []
-    if query:
-        relevant_facts = [item["fact"] for item in filtered_memory if query.lower() in item["fact"].lower()]
-    else:
-        relevant_facts = [item["fact"] for item in filtered_memory]
+    all_facts = [item["fact"] for item in filtered_memory]
 
-    # Apply limit, typically for conversation history (most recent first)
+    if query:
+        relevant_facts = await semantic_search_facts(query, all_facts)
+    else:
+        relevant_facts = all_facts
+
     if limit is not None:
         relevant_facts = relevant_facts[-limit:]
 

@@ -111,8 +111,8 @@ async def main():
         save_memory(f"User: {user_input}", memory_type="conversation")
 
         # Construct history for the agent: recent conversation + relevant saved facts
-        conversation_history = recall_memory(memory_type="conversation", limit=10).get("facts", []) # Last 10 conversation turns
-        relevant_facts = recall_memory(query=user_input, memory_type="fact").get("facts", []) # Only relevant saved facts
+        conversation_history = (await recall_memory(memory_type="conversation", limit=10)).get("facts", []) # Last 10 conversation turns
+        relevant_facts = (await recall_memory(query=user_input, memory_type="fact")).get("facts", []) # Only relevant saved facts
         history_for_agent = conversation_history + relevant_facts
 
         # Add current working directory to the history for the agent's context
@@ -188,7 +188,7 @@ async def main():
             # Get a final text response from the agent based on the plan's outcome
             spinner.start()
             # Recall memory again to include plan execution results for final decision
-            recalled_memory_for_final = recall_memory(memory_type="conversation", limit=10).get("facts", []) + recall_memory(query=user_input, memory_type="fact").get("facts", []) # Pass user_input for relevance
+            recalled_memory_for_final = (await recall_memory(memory_type="conversation", limit=10)).get("facts", []) + (await recall_memory(query=user_input, memory_type="fact")).get("facts", []) # Pass user_input for relevance
             final_decision = await get_agent_decision(recalled_memory_for_final, current_working_directory, force_text_response=True) # Pass current_working_directory
             spinner.stop()
 

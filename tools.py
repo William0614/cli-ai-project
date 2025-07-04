@@ -156,7 +156,7 @@ tools_schema = [
         "type": "function",
         "function": {
             "name": "recall_memory",
-            "description": "Recalls relevant facts from the agent's long-term memory based on a query.",
+            "description": "Recalls relevant facts from the agent's long-term memory using semantic search.",
             "parameters": {
                 "type": "object",
                 "properties": {
