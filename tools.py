@@ -3,6 +3,10 @@ import asyncio
 import aiofiles
 import os
 from typing import Optional
+import asyncio
+import aiofiles
+import os
+from image_tools import classify_image
 
 # --- 1. ASYNC TOOL IMPLEMENTATIONS ---
 
@@ -71,6 +75,7 @@ available_tools = {
     "read_file": read_file,
     "write_file": write_file,
     "list_directory": list_directory,
+    "classify_image": classify_image,
 }
 
 # --- 3. TOOL SCHEMA ---
@@ -82,7 +87,7 @@ tools_schema = [
             "description": "Executes a shell command.",
             "parameters": {
                 "type": "object",
-                "properties": {
+                ""properties": {
                     "command": {"type": "string", "description": "The command to execute."},
                     "directory": {"type": "string", "description": "The directory to execute the command in. Defaults to the current working directory."}
                 },
@@ -135,4 +140,20 @@ tools_schema = [
             }
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "classify_image",
+            "description": "Classifies an image or answers a question about its content using a local multimodal model.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "image_path": {"type": "string", "description": "The absolute path to the image file."},
+                    "question": {"type": "string", "description": "The question to ask about the image, e.g., 'What is in this image?', 'Is there a dog?'."}
+                },
+                "required": ["image_path", "question"]
+            }
+        }
+    },
 ]
+

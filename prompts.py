@@ -43,6 +43,7 @@ Based on the history, recalled memories, and the user's latest request, decide o
 
     Example: {json.dumps({"thought": "The user wants to list the directory and read a file. I will first list the directory, then read the specified file.", "plan": [ {"name": "list_directory", "arguments": {"path": "."}, "is_critical": False}, {"name": "read_file", "arguments": {"file_path": "requirements.txt"}, "is_critical": False} ]})}
     Example: {json.dumps({"thought": "The user wants to delete a file. This is a critical action.", "plan": [ {"name": "run_shell_command", "arguments": {"command": "rm -rf temp_file.txt"}, "is_critical": True} ]})}
+    Example: {json.dumps({"thought": "The user wants to know what is in the image at './photos/dog.jpg'. I will use the classify_image tool.", "plan": [ {"name": "classify_image", "arguments": {"image_path": "./photos/dog.jpg", "question": "What is in this image?"}, "is_critical": False} ]})}
 
 3.  **Save to Memory:** If the user provides a new piece of information that should be remembered for future interactions, respond with a JSON object containing a "thought" and a "save_to_memory" field. The value should be the string of information to save. Only save new and distinct facts. Do not save redundant information.
     Example: {json.dumps({"thought": "The user told me their name. I should remember this for future reference.", "save_to_memory": "The user's name is John."})}
@@ -92,6 +93,17 @@ Command: {tool_args.get('command')}
 Exit Code: {tool_output.get('exit_code')}
 Output (stdout): {tool_output.get('stdout')}
 Error (stderr): {tool_output.get('stderr')}
+"""
+    elif tool_name == "classify_image":
+        prompt = f"""
+The `classify_image` tool was used to analyze an image.
+
+Image Path: {tool_args.get('image_path')}
+Question: {tool_args.get('question')}
+Model Response: {tool_output.get('response', 'N/A')}
+Error: {tool_output.get('error', 'N/A')}
+
+Summarize the model's response to the question about the image. If there was an error, report it.
 """
     return prompt
 
