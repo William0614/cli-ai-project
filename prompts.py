@@ -18,7 +18,7 @@ review the conversation history and relevant facts, and decide on the best cours
 **Your Task:**
 Based on the history and the user's latest request, decide on one of the following:
 
-1.  **Text Response:** If the user's request is a simple question, a greeting, or can be answered directly without needing to use any tools, respond with a JSON object containing a "thought" and a "text" field.
+1.  **Text Response:** If the user's request is a simple question, a greeting, or can be answered directly without needing to use any tools, respond with a JSON object containing a "thought" and a "text" field. **Prioritize this option for simple conversational turns, greetings, or direct questions that do not require tool usage.**
     Example: {json.dumps({"thought": "The user is greeting me, so I will respond directly.", "text": "Hello! How can I help you today?"})}
     Example: {json.dumps({"thought": "The user is asking for my geographical location, which I cannot determine. I will respond directly.", "text": "As an AI, I don't have a physical location on Earth."})}
 
@@ -34,7 +34,7 @@ Based on the history and the user's latest request, decide on one of the followi
     Example: {json.dumps({"thought": "The user wants to know the current directory. I will use `pwd` to get it.", "plan": [ {"name": "run_shell_command", "arguments": {"command": "pwd"}, "is_critical": False} ]})}
     Example: {json.dumps({"thought": "The user wants to delete a file. This is a critical action.", "plan": [ {"name": "run_shell_command", "arguments": {"command": "rm -rf temp_file.txt"}, "is_critical": True} ]})}
     Example: {json.dumps({"thought": "The user wants to write to a file. This is a critical action.", "plan": [ {"name": "write_file", "arguments": {"file_path": "new_file.txt", "content": "Hello World"}, "is_critical": True} ]})}
-    Example: {json.dumps({"thought": "The user wants me to remember a fact. I will use the `save_memory` tool.", "plan": [ {"name": "save_memory", "arguments": {"fact": "My favorite color is blue."}, "is_critical": False} ]})}
+    Example: {json.dumps({"thought": "The user wants me to remember a fact. I will use the `save_memory` tool. I will only save new and distinct facts. I will not save redundant information.", "plan": [ {"name": "save_memory", "arguments": {"fact": "My favorite color is blue."}, "is_critical": False} ]})}
     Example: {json.dumps({"thought": "The user wants to recall a fact about their favorite color. I will use the `recall_memory` tool to search for facts using semantic search.", "plan": [ {"name": "recall_memory", "arguments": {"query": "favorite color", "memory_type": "fact"}, "is_critical": False} ]})}
 
 **Available Tools:**
@@ -45,7 +45,6 @@ def get_summarizer_system_prompt():
     return "You are a helpful assistant who summarizes technical output for a user. Be concise and clear."
 
 def get_tool_summary_prompt(tool_name: str, tool_args: dict, tool_output: dict) -> str:
-    # This function remains the same as before
     prompt = f"""
 A tool has just been executed. Please generate a brief, user-friendly sentence explaining the outcome.
 
@@ -97,10 +96,12 @@ Result: {json.dumps(tool_output)}
             prompt = f"""
 The `recall_memory` tool was used. The following relevant facts were recalled:
 {json.dumps(facts, indent=2)}
+
+Based on these facts, please directly answer the user's original question. If the facts are insufficient, state that you don't have enough information.
 """
         else:
             prompt = f"""
-The `recall_memory` tool was used. No relevant facts were found for the query '{tool_args.get('query')}'
+The `recall_memory` tool was used. No relevant facts were found for the query '{tool_args.get('query')}'. Please inform the user that you don't have that information.
 """
     return prompt
 
@@ -108,4 +109,4 @@ def get_final_summary_system_prompt():
     """
     Returns a system prompt specifically for generating a final summary of a plan's execution.
     """
-    return "You are a helpful assistant. Summarize the provided plan execution results in a concise, user-friendly text format. Focus on the overall outcome and any important details or errors."
+    return "You are a helpful assistant. Summarize the provided plan execution results in a concise, user-friendly text format. Focus on the overall outcome and any important details or errors. If no plan was executed, provide a general, helpful response based on the conversation."
