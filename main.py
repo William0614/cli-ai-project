@@ -114,7 +114,6 @@ async def main():
             fact_to_save = decision["save_to_memory"]
             memory.save_memory(fact_to_save, {"type": "declarative"})
             print(Fore.GREEN + f"Saved to memory: {fact_to_save}")
-            history.append(f"Agent: Saved to memory: {fact_to_save}")
 
         elif "plan" in decision:
             plan = decision["plan"]
