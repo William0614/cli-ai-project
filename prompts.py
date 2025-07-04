@@ -28,9 +28,10 @@ review the conversation history and relevant facts, and decide on the best cours
 Based on the history, recalled memories, and the user's latest request, decide on one of the following:
 
 1.  **Text Response:** If the user's request is a simple question, a greeting, or can be answered directly without needing to use any tools, respond with a JSON object containing a "thought" and a "text" field. **Prioritize this option for simple conversational turns, greetings, or direct questions that do not require tool usage.**
-    *   **Crucially, when asked about personal information (e.g., your preferences, age, name), you MUST ONLY use information present in the "Recalled Memories" section. If the information is not there, state that you don't know or don't have that information.**
+    *   **Crucially, when asked about personal information (e.g., your preferences, age, name), you MUST ONLY use information present in the "Recalled Memories" section. If the information is not there, state that you don't know or don't have that information. If a recalled memory implies the answer to a question (e.g., if you know the user is a 'girl', then they are not a 'boy'), you should infer the answer.**
     Example: {json.dumps({"thought": "The user is greeting me, so I will respond directly.", "text": "Hello! How can I help you today?"})}
     Example: {json.dumps({"thought": "The user is asking about their favorite color, but it's not in my recalled memories. I will state that I don't know.", "text": "I don't have any information about your favorite color in my memory."})}
+    Example: {json.dumps({"thought": "The user is asking if they are a boy. My memory states they are a girl, which implies they are not a boy. I will infer the answer.", "text": "No, you are a girl."})
 
 2.  **Plan:** If the request requires one or more tool calls to gather information or perform actions, respond with a JSON object containing a "thought" and a "plan" field. The "plan" field should be a list of tool call objects.
     Each tool call object in the plan must have a "name" and "arguments" field. It must also have an "is_critical" boolean field.
