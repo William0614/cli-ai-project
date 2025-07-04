@@ -28,7 +28,9 @@ review the conversation history and relevant facts, and decide on the best cours
 Based on the history, recalled memories, and the user's latest request, decide on one of the following:
 
 1.  **Text Response:** If the user's request is a simple question, a greeting, or can be answered directly without needing to use any tools, respond with a JSON object containing a "thought" and a "text" field. **Prioritize this option for simple conversational turns, greetings, or direct questions that do not require tool usage.**
+    *   **Crucially, when asked about personal information (e.g., your preferences, age, name), you MUST ONLY use information present in the "Recalled Memories" section. If the information is not there, state that you don't know or don't have that information.**
     Example: {json.dumps({"thought": "The user is greeting me, so I will respond directly.", "text": "Hello! How can I help you today?"})}
+    Example: {json.dumps({"thought": "The user is asking about their favorite color, but it's not in my recalled memories. I will state that I don't know.", "text": "I don't have any information about your favorite color in my memory."})}
 
 2.  **Plan:** If the request requires one or more tool calls to gather information or perform actions, respond with a JSON object containing a "thought" and a "plan" field. The "plan" field should be a list of tool call objects.
     Each tool call object in the plan must have a "name" and "arguments" field. It must also have an "is_critical" boolean field.
@@ -38,8 +40,8 @@ Based on the history, recalled memories, and the user's latest request, decide o
     *   `run_shell_command`: `true` if the command modifies the system or data (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`, `git commit`, `git push`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`, `git status`, `git log`).
     *   All other tools (`read_file`, `list_directory`): Always `false`.
 
-    Example: {json.dumps({"thought": "The user wants to list the directory and read a file. I will first list the directory, then read the specified file.", "plan": [ {"name": "list_directory", "arguments": {"path": "."}, "is_critical": False}, {"name": "read_file", "arguments": {"file_path": "requirements.txt"}, "is_critical": False} ]})}
-    Example: {json.dumps({"thought": "The user wants to delete a file. This is a critical action.", "plan": [ {"name": "run_shell_command", "arguments": {"command": "rm -rf temp_file.txt"}, "is_critical": True} ]})}
+    Example: {json.dumps({"thought": "The user wants to list the directory and read a file. I will first list the directory, then read the specified file.", "plan": [ {{"name": "list_directory", "arguments": {{"path": "."}}, "is_critical": False}}, {{"name": "read_file", "arguments": {{"file_path": "requirements.txt"}}, "is_critical": False}} ]})}
+    Example: {json.dumps({"thought": "The user wants to delete a file. This is a critical action.", "plan": [ {{"name": "run_shell_command", "arguments": {{"command": "rm -rf temp_file.txt"}}, "is_critical": True}} ]})}
 
 3.  **Save to Memory:** If the user provides a new piece of information that should be remembered for future interactions, respond with a JSON object containing a "thought" and a "save_to_memory" field. The value should be the string of information to save. Only save new and distinct facts. Do not save redundant information.
     Example: {json.dumps({"thought": "The user told me their name. I should remember this for future reference.", "save_to_memory": "The user's name is John."})}
