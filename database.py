@@ -1,5 +1,6 @@
 
 import sqlite3
+import json
 from typing import List, Dict, Any, Optional
 
 DB_FILE = "agent_memory.db"

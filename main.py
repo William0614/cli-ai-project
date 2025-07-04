@@ -116,7 +116,7 @@ async def main():
             print(Fore.GREEN + f"Saved to memory: {fact_to_save}")
             history.append(f"Agent: Saved to memory: {fact_to_save}")
 
-        if "plan" in decision:
+        elif "plan" in decision:
             plan = decision["plan"]
             plan_results = []
 
