@@ -40,8 +40,8 @@ Based on the history, recalled memories, and the user's latest request, decide o
     *   `run_shell_command`: `true` if the command modifies the system or data (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`, `git commit`, `git push`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`, `git status`, `git log`).
     *   All other tools (`read_file`, `list_directory`): Always `false`.
 
-    Example: {json.dumps({"thought": "The user wants to list the directory and read a file. I will first list the directory, then read the specified file.", "plan": [ {{"name": "list_directory", "arguments": {{"path": "."}}, "is_critical": False}}, {{"name": "read_file", "arguments": {{"file_path": "requirements.txt"}}, "is_critical": False}} ]})}
-    Example: {json.dumps({"thought": "The user wants to delete a file. This is a critical action.", "plan": [ {{"name": "run_shell_command", "arguments": {{"command": "rm -rf temp_file.txt"}}, "is_critical": True}} ]})}
+    Example: {json.dumps({"thought": "The user wants to list the directory and read a file. I will first list the directory, then read the specified file.", "plan": [ {"name": "list_directory", "arguments": {"path": "."}, "is_critical": False}, {"name": "read_file", "arguments": {"file_path": "requirements.txt"}, "is_critical": False} ]})}
+    Example: {json.dumps({"thought": "The user wants to delete a file. This is a critical action.", "plan": [ {"name": "run_shell_command", "arguments": {"command": "rm -rf temp_file.txt"}, "is_critical": True} ]})}
 
 3.  **Save to Memory:** If the user provides a new piece of information that should be remembered for future interactions, respond with a JSON object containing a "thought" and a "save_to_memory" field. The value should be the string of information to save. Only save new and distinct facts. Do not save redundant information.
     Example: {json.dumps({"thought": "The user told me their name. I should remember this for future reference.", "save_to_memory": "The user's name is John."})}
