@@ -3,6 +3,7 @@ import json
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from prompts import get_agent_system_prompt, get_summarizer_system_prompt, get_tool_summary_prompt, get_final_summary_system_prompt
+import memory_system as memory
 
 load_dotenv()
 
@@ -17,7 +18,8 @@ async def get_agent_decision(history: list, current_working_directory: str, forc
         system_prompt = get_final_summary_system_prompt()
         user_message = history[-1]
     else:
-        system_prompt = get_agent_system_prompt(history, current_working_directory)
+        recalled_memories = memory.recall_memories(history[-1])
+        system_prompt = get_agent_system_prompt(history, current_working_directory, recalled_memories)
         user_message = history[-1] # Pass the latest user message
 
     try:
@@ -34,6 +36,11 @@ async def get_agent_decision(history: list, current_working_directory: str, forc
             decision = {"text": response.choices[0].message.content.strip()}
         else:
             decision = json.loads(response.choices[0].message.content)
+        
+        # Decide whether to save the conversation to memory
+        if not force_text_response and "save_to_memory" in decision:
+            memory.save_memory(decision["save_to_memory"], {"type": "declarative"})
+
         return decision
 
     except Exception as e:

@@ -4,10 +4,10 @@ import threading
 import itertools
 import time
 import sys
-import os # Import os module
+import os
 from ai_core import get_agent_decision, summarize_tool_result
-from tools import available_tools # Keep available_tools for execute_tool_call
-from memory import save_memory, recall_memory # Import memory functions directly
+from tools import available_tools
+import memory_system as memory
 from colorama import init, Fore
 
 init(autoreset=True)
@@ -25,7 +25,6 @@ class Spinner:
             sys.stdout.write(f"\r{Fore.YELLOW}{self.message} {next(self.spinner)}")
             sys.stdout.flush()
             time.sleep(0.1)
-        # Clear the line after stopping
         sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")
         sys.stdout.flush()
 
@@ -41,27 +40,23 @@ class Spinner:
 
 # --- Main Application Logic ---
 
-# Global variable to track the current working directory
-current_working_directory = os.getcwd() # Initialize with the actual current working directory
+current_working_directory = os.getcwd()
 
 async def execute_tool_call(tool_call: dict) -> str:
-    global current_working_directory # Declare global to modify it
+    global current_working_directory
 
     tool_name = tool_call.get("name")
     tool_args = tool_call.get("arguments", {})
     
     if tool_name == "run_shell_command":
         command = tool_args.get("command", "")
-        # Update current_working_directory if a 'cd' command is executed
         if command.strip().startswith("cd "):
             new_path = command.strip()[3:].strip()
-            # Handle absolute and relative paths
             if os.path.isabs(new_path):
                 target_path = new_path
             else:
                 target_path = os.path.join(current_working_directory, new_path)
             
-            # Normalize path (e.g., resolve '..' and '.')
             target_path = os.path.normpath(target_path)
 
             if os.path.isdir(target_path):
@@ -74,9 +69,7 @@ async def execute_tool_call(tool_call: dict) -> str:
                 print(Fore.RED + summary)
                 return summary
         
-        # For other shell commands, execute in the current_working_directory
-        # The run_shell_command tool itself will use this argument
-        tool_args["directory"] = current_working_directory 
+        tool_args["directory"] = current_working_directory
 
     if tool_name in available_tools:
         tool_function = available_tools[tool_name]
@@ -99,6 +92,7 @@ async def execute_tool_call(tool_call: dict) -> str:
 async def main():
     print(Fore.YELLOW + "Autonomous Agent Started. Type 'exit' to quit.")
     spinner = Spinner()
+    history = []
 
     while True:
         user_input = input("\n> ")
@@ -107,32 +101,26 @@ async def main():
         if user_input.lower() == "exit":
             break
 
-        # Save user input to memory as a conversation turn
-        save_memory(f"User: {user_input}", memory_type="conversation")
+        history.append(f"User: {user_input}")
 
-        # Construct history for the agent: recent conversation + relevant saved facts
-        conversation_history = (await recall_memory(memory_type="conversation", limit=10)).get("facts", []) # Last 10 conversation turns
-        relevant_facts = (await recall_memory(query=user_input, memory_type="fact")).get("facts", []) # Only relevant saved facts
-        history_for_agent = conversation_history + relevant_facts
-
-        # Add current working directory to the history for the agent's context
-        # This is now handled by passing it as a separate argument to get_agent_decision
-
-        # Start the spinner right before the async call
         spinner.start()
-        decision = await get_agent_decision(history_for_agent, current_working_directory) # Pass current_working_directory
-        # Stop the spinner immediately after the call returns
+        decision = await get_agent_decision(history, current_working_directory)
         spinner.stop()
 
         if "thought" in decision:
             print(Fore.BLUE + f"Thought: {decision['thought']}")
+
+        if "save_to_memory" in decision:
+            fact_to_save = decision["save_to_memory"]
+            memory.save_memory(fact_to_save, {"type": "declarative"})
+            print(Fore.GREEN + f"Saved to memory: {fact_to_save}")
+            history.append(f"Agent: Saved to memory: {fact_to_save}")
 
         if "plan" in decision:
             plan = decision["plan"]
             plan_results = []
 
             if len(plan) == 1:
-                # Single step plan: execute directly without showing plan or asking overall approval
                 tool_call = plan[0]
                 tool_name = tool_call.get("name")
                 is_critical = tool_call.get("is_critical", False)
@@ -150,7 +138,6 @@ async def main():
                     plan_results.append(f"Tool {tool_name} executed: {summary}")
 
             else:
-                # Multi-step plan: show plan and ask for overall approval
                 print(Fore.YELLOW + "The AI has proposed a plan:")
                 for i, step in enumerate(plan, 1):
                     tool_name = step.get("name")
@@ -173,46 +160,47 @@ async def main():
                             else:
                                 print(Fore.RED + "Action aborted by user.")
                                 plan_results.append(f"Tool {tool_name} aborted by user.")
-                                break # Abort the rest of the plan
+                                break
                         else:
                             summary = await execute_tool_call(tool_call)
                             plan_results.append(f"Tool {tool_name} executed: {summary}")
                 else:
                     print(Fore.RED + "Plan aborted by user.")
-                    save_memory("Plan aborted by user.", memory_type="conversation") # Save to memory
+                    history.append("Agent: Plan aborted by user.")
 
-            # After executing the plan (or single step), feed the results back to the agent for a final response
-            if plan_results: # Only append if something was executed
-                save_memory(f"Plan Execution Results: {'; '.join(plan_results)}", memory_type="conversation") # Save to memory
+            if plan_results:
+                history.append(f"Agent: Plan Execution Results: {'; '.join(plan_results)}")
             
-            # Get a final text response from the agent based on the plan's outcome
             spinner.start()
-            # Recall memory again to include plan execution results for final decision
-            recalled_memory_for_final = (await recall_memory(memory_type="conversation", limit=10)).get("facts", []) + (await recall_memory(query=user_input, memory_type="fact")).get("facts", []) # Pass user_input for relevance
-            final_decision = await get_agent_decision(recalled_memory_for_final, current_working_directory, force_text_response=True) # Pass current_working_directory
+            final_decision = await get_agent_decision(history, current_working_directory, force_text_response=True)
             spinner.stop()
 
             if "text" in final_decision:
                 ai_response = final_decision["text"]
                 print(Fore.MAGENTA + f"AI: {ai_response}")
-                save_memory(f"AI: {ai_response}", memory_type="conversation") # Save to memory
+                history.append(f"Agent: {ai_response}")
             else:
                 error_msg = f"Sorry, I received an unexpected final decision format: {final_decision}"
                 print(Fore.RED + error_msg)
-                save_memory(f"Error: {error_msg}", memory_type="conversation") # Save to memory
+                history.append(f"Agent: Error: {error_msg}")
 
         elif "text" in decision:
             ai_response = decision["text"]
             print(Fore.MAGENTA + f"AI: {ai_response}")
-            save_memory(f"AI: {ai_response}", memory_type="conversation") # Save to memory
+            history.append(f"Agent: {ai_response}")
             
         else:
             error_msg = f"Sorry, I received an unexpected decision format: {decision}"
             print(Fore.RED + error_msg)
-            save_memory(f"Error: {error_msg}", memory_type="conversation") # Save to memory
+            history.append(f"Agent: Error: {error_msg}")
 
 if __name__ == "__main__":
     try:
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'agent_memory.db')
+        if not os.path.exists(db_path):
+            from database import initialize_db
+            initialize_db()
+            print("Database initialized.")
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\nExiting...")
