@@ -6,7 +6,7 @@ from typing import Optional
 import asyncio
 import aiofiles
 import os
-from image_tools import classify_image
+from image_tools import classify_folder
 
 # --- 1. ASYNC TOOL IMPLEMENTATIONS ---
 
@@ -75,7 +75,7 @@ available_tools = {
     "read_file": read_file,
     "write_file": write_file,
     "list_directory": list_directory,
-    "classify_image": classify_image,
+    "classify_folder": classify_folder,
 }
 
 # --- 3. TOOL SCHEMA ---
@@ -143,15 +143,15 @@ tools_schema = [
     {
         "type": "function",
         "function": {
-            "name": "classify_image",
-            "description": "Classifies an image or answers a question about its content using a local multimodal model.",
+            "name": "classify_folder",
+            "description": "Lists all the photos inside a folder that have a property that is determined by user's prompt.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "image_path": {"type": "string", "description": "The absolute path to the image file."},
-                    "question": {"type": "string", "description": "The question to ask about the image, e.g., 'What is in this image?', 'Is there a dog?'."}
+                    "folder_path": {"type": "string", "description": "The absolute path to the folder."},
+                    "property": {"type": "string", "description": "The property of the desired images, e.g., 'Dogs', 'Human smiling'."}
                 },
-                "required": ["image_path", "question"]
+                "required": ["folder_path", "property"]
             }
         }
     },

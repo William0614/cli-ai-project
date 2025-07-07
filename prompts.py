@@ -94,16 +94,16 @@ Exit Code: {tool_output.get('exit_code')}
 Output (stdout): {tool_output.get('stdout')}
 Error (stderr): {tool_output.get('stderr')}
 """
-    elif tool_name == "classify_image":
+    elif tool_name == "classify_folder":
         prompt = f"""
-The `classify_image` tool was used to analyze an image.
+The `classify_folder` tool was used to classify all photos inside a folder based on a certain property.
 
-Image Path: {tool_args.get('image_path')}
-Question: {tool_args.get('question')}
-Model Response: {tool_output.get('response', 'N/A')}
+Folder Path: {tool_args.get('folder_path')}
+Property: {tool_args.get('property')}
+Model Response: {tool_output.get('images_with_property', 'N/A')}
 Error: {tool_output.get('error', 'N/A')}
 
-Summarize the model's response to the question about the image. If there was an error, report it.
+List ONLY the photos that have the property. If there was an error, report it.
 """
     return prompt
 

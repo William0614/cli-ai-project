@@ -19,7 +19,8 @@ MODEL_NAME = "Qwen/Qwen2.5-VL-3B-Instruct"
 IMAGE_FOLDER = "photos"
 
 # The port for our temporary local web server
-LOCAL_SERVER_PORT = 8888
+LOCAL_SERVER_PORT = 8887
+
 
 # --- Main Classification Logic ---
 def get_yes_no_answer(image_url, prompt_text):
@@ -78,7 +79,6 @@ if __name__ == "__main__":
         "non_matching_files": [],
         "error_files": []
     }
-
     
     # --- Start Classification ---
     print(f"\n--- Starting Classification in '{IMAGE_FOLDER}' Folder ---")
@@ -93,7 +93,7 @@ if __name__ == "__main__":
     for image_path in image_files:
         print(f"Processing '{image_path.name}'...")
 
-        image_url = f"http://localhost:{LOCAL_SERVER_PORT}/{image_path.as_posix()}"
+        image_url = f"http://172.17.0.1:{LOCAL_SERVER_PORT}/{image_path.as_posix()}"
         
         answer = get_yes_no_answer(image_url, user_question)
         
@@ -113,8 +113,6 @@ if __name__ == "__main__":
             results["non_matching_files"].append(absolute_path_str)
             print(f"  -> Added to 'non_matching_files' list.")
             
-
-        
     # --- Print the final results ---
     print("\n--- Final Results ---")
     print(json.dumps(results, indent=2))
