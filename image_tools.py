@@ -11,12 +11,12 @@ from typing import Optional
 # --- Configuration ---
 API_URL = "http://localhost:8002/v1/chat/completions"
 MODEL_NAME = "Qwen/Qwen2.5-VL-3B-Instruct"
-LOCAL_SERVER_PORT = 8885
+LOCAL_SERVER_PORT = 8887
 
 # Global variables for server management
 server_thread: Optional[threading.Thread] = None
 httpd: Optional[socketserver.TCPServer] = None
-server_running: bool = False
+server_running: bool = True
 
 class LocalImageServer(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -70,7 +70,7 @@ async def classify_image(image_path: str, question: str) -> dict:
         # In such cases, we might need a more sophisticated server or a different approach
         return {"error": f"Image path {image_path} is not relative to the current working directory. Cannot serve."}
 
-    image_url = f"http://localhost:{LOCAL_SERVER_PORT}/{relative_image_path}"
+    image_url = f"http://172.17.0.1:{LOCAL_SERVER_PORT}/cli-ai-project/{relative_image_path}"
 
     payload = {
         "model": MODEL_NAME,
