@@ -2,3 +2,5 @@ google-generativeai
 python-dotenv
 colorama
 transformers
+sounddevice
+numpy
