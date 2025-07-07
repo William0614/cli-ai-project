@@ -8,6 +8,7 @@ import os
 from ai_core import get_agent_decision, summarize_tool_result
 from tools import available_tools
 import memory_system as memory
+from speech_to_text import get_voice_input_whisper
 from colorama import init, Fore
 
 init(autoreset=True)
@@ -90,12 +91,20 @@ async def execute_tool_call(tool_call: dict) -> str:
         return error_msg
 
 async def main():
-    print(Fore.YELLOW + "Autonomous Agent Started. Type 'exit' to quit.")
+    print(Fore.YELLOW + "Autonomous Agent Started. Say 'exit' to quit.")
     spinner = Spinner()
     history = []
 
     while True:
-        user_input = input("\n> ")
+        print(Fore.CYAN + "\nListening for your command...")
+        user_input = get_voice_input_whisper(duration=5)
+
+        if user_input:
+            print(f"> You said: {user_input}")
+        else:
+            print(Fore.YELLOW + "No voice input detected, please use text input.")
+            user_input = input("> ")
+
         if not user_input:
             continue
         if user_input.lower() == "exit":
