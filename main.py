@@ -150,51 +150,60 @@ async def main():
                 print(Fore.CYAN + f"\n--- Executing Step {i+1}/{len(plan)} ---")
                 print(Fore.CYAN + f"Thought: {step['thought']}")
 
-                # Substitute placeholders
-                step_args_str = json.dumps(step['args'])
-                for j, prev_output in enumerate(step_outputs):
-                    placeholder = f"<output_of_step_{j+1}>"
-                    if placeholder in step_args_str:
-                        # If the output is a list, we might need to expand this step
-                        if isinstance(prev_output, list):
-                            # This step will be expanded into multiple tool calls
-                            step_args_str = step_args_str.replace(f'"{placeholder}"' , json.dumps(prev_output))
-                        else:
-                            step_args_str = step_args_str.replace(placeholder, str(prev_output))
+                # --- Placeholder Substitution and Step Expansion Logic ---
+                import re
                 
-                try:
-                    step['args'] = json.loads(step_args_str)
-                except json.JSONDecodeError:
-                    print(Fore.RED + f"Error: Could not decode arguments for step {i+1} after placeholder substitution.")
-                    plan_results.append({"tool": step['tool'], "status": "Error", "output": "Argument parsing failed."})
-                    break
+                current_args = json.loads(json.dumps(step['args'])) # Deep copy to avoid modifying the original plan
+                
+                # Find placeholders and substitute them
+                for arg_name, arg_value in list(current_args.items()):
+                    if isinstance(arg_value, str) and "<output_of_step_" in arg_value:
+                        match = re.search(r"<output_of_step_(\d+)>", arg_value)
+                        if match:
+                            step_num_to_get = int(match.group(1))
+                            if 0 < step_num_to_get <= len(step_outputs):
+                                prev_output = step_outputs[step_num_to_get - 1]
+                                
+                                # Handle list_directory output specifically
+                                if isinstance(prev_output, dict) and 'entries' in prev_output:
+                                    file_list = prev_output['entries']
+                                    # The placeholder might be part of a path, e.g., "photos/<output_of_step_1>"
+                                    base_path = os.path.dirname(arg_value.replace(match.group(0), ''))
+                                    full_paths = [os.path.join(base_path, f) for f in file_list]
+                                    current_args[arg_name] = full_paths
+                                else:
+                                    # Generic placeholder replacement
+                                    current_args[arg_name] = arg_value.replace(match.group(0), str(prev_output))
 
-                print(Fore.CYAN + f"Action: {step['tool']}({step['args']})")
-
-                if step.get("is_critical"):
-                    confirm = input(Fore.RED + "Confirm execution of this critical step? (yes/no): ").lower()
-                    if confirm != 'yes':
-                        print(Fore.RED + "Step aborted by user.")
-                        plan_results.append({"tool": step['tool'], "status": "Aborted", "output": "User aborted critical step."})
-                        break
-
-                # Handle list expansion
+                # --- Tool Execution Logic (with expansion) ---
                 args_to_process = []
                 is_expanded = False
-                for arg_name, arg_value in step['args'].items():
-                    if isinstance(arg_value, list) and arg_name == 'image_path': # Specific logic for classify_image
+                
+                # Check if any argument value is a list that requires expansion
+                for arg_name, arg_value in current_args.items():
+                    if isinstance(arg_value, list):
                         is_expanded = True
                         for item in arg_value:
-                            new_args = step['args'].copy()
+                            new_args = current_args.copy()
                             new_args[arg_name] = item
                             args_to_process.append(new_args)
-                        break
+                        break # Assume only one arg can be expanded per step
                 
                 if not is_expanded:
-                    args_to_process.append(step['args'])
+                    args_to_process.append(current_args)
 
                 step_output_collector = []
                 for single_args in args_to_process:
+                    print(Fore.CYAN + f"Action: {step['tool']}({single_args})")
+
+                    if step.get("is_critical"):
+                        confirm = input(Fore.RED + "Confirm execution of this critical step? (yes/no): ").lower()
+                        if confirm != 'yes':
+                            print(Fore.RED + "Step aborted by user.")
+                            plan_results.append({"tool": step['tool'], "status": "Aborted", "output": "User aborted critical step."})
+                            plan_halted = True
+                            break
+
                     spinner.start()
                     result = await execute_tool(step["tool"], single_args)
                     spinner.stop()
@@ -210,7 +219,7 @@ async def main():
                 if plan_halted:
                     continue
 
-                # Consolidate output
+                # Consolidate output for the next step
                 final_output = step_output_collector[0] if len(step_output_collector) == 1 else step_output_collector
                 step_outputs.append(final_output)
                 plan_results.append({"tool": step['tool'], "status": "Success", "output": final_output})
