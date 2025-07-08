@@ -1,8 +1,9 @@
 from transformers import pipeline
 import sounddevice as sd
 import numpy as npm
+from typing import Optional
 
-model_name = "openai/whisper-base.en"
+model_name = "openai/whisper-tiny.en"
 asr_pipeline = pipeline("automatic-speech-recognition", model=model_name)
 
 def get_voice_input_whisper(duration=5, samplerate=16000) -> Optional[str]:
