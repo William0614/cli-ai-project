@@ -5,7 +5,7 @@ import itertools
 import time
 import sys
 import os
-from ai_core import get_agent_decision, summarize_tool_result
+from ai_core import create_plan, summarize_plan_result
 from tools import available_tools
 import memory_system as memory
 from speech_to_text import get_voice_input_whisper
@@ -43,12 +43,9 @@ class Spinner:
 
 current_working_directory = os.getcwd()
 
-async def execute_tool_call(tool_call: dict) -> str:
+async def execute_tool(tool_name: str, tool_args: dict) -> dict:
     global current_working_directory
 
-    tool_name = tool_call.get("name")
-    tool_args = tool_call.get("arguments", {})
-    
     if tool_name == "run_shell_command":
         command = tool_args.get("command", "")
         if command.strip().startswith("cd "):
@@ -62,33 +59,25 @@ async def execute_tool_call(tool_call: dict) -> str:
 
             if os.path.isdir(target_path):
                 current_working_directory = target_path
-                summary = f"Changed directory to {current_working_directory}"
-                print(Fore.GREEN + summary)
-                return summary
+                return {"status": "Success", "output": f"Changed directory to {current_working_directory}"}
             else:
-                summary = f"Error: Directory not found: {new_path}"
-                print(Fore.RED + summary)
-                return summary
+                return {"status": "Error", "output": f"Directory not found: {new_path}"}
         
         tool_args["directory"] = current_working_directory
 
     if tool_name in available_tools:
         tool_function = available_tools[tool_name]
         
-        print(Fore.CYAN + f"Action: {tool_name}({tool_args})")
-        
-        if inspect.iscoroutinefunction(tool_function):
-            raw_output = await tool_function(**tool_args)
-        else:
-            raw_output = tool_function(**tool_args)
-        
-        summary = await summarize_tool_result(tool_name, tool_args, raw_output)
-        print(Fore.GREEN + summary)
-        return summary
+        try:
+            if inspect.iscoroutinefunction(tool_function):
+                raw_output = await tool_function(**tool_args)
+            else:
+                raw_output = tool_function(**tool_args)
+            return {"status": "Success", "output": raw_output}
+        except Exception as e:
+            return {"status": "Error", "output": f"Tool execution failed: {e}"}
     else:
-        error_msg = f"Error: Unknown tool '{tool_name}'."
-        print(Fore.RED + error_msg)
-        return error_msg
+        return {"status": "Error", "output": f"Unknown tool '{tool_name}'."}
 
 async def main():
     print(Fore.YELLOW + "Autonomous Agent Started. Say 'exit' to quit.")
@@ -113,13 +102,15 @@ async def main():
         history.append(f"User: {user_input}")
 
         spinner.start()
-        decision = await get_agent_decision(history, current_working_directory)
+        decision = await create_plan(history, current_working_directory)
         spinner.stop()
 
-        if "thought" in decision:
-            print(Fore.BLUE + f"Thought: {decision['thought']}")
+        if "text" in decision:
+            ai_response = decision["text"]
+            print(Fore.MAGENTA + f"AI: {ai_response}")
+            history.append(f"Agent: {ai_response}")
 
-        if "save_to_memory" in decision:
+        elif "save_to_memory" in decision:
             fact_to_save = decision["save_to_memory"]
             memory.save_memory(fact_to_save, {"type": "declarative"})
             print(Fore.GREEN + f"Saved to memory: {fact_to_save}")
@@ -127,76 +118,57 @@ async def main():
         elif "plan" in decision:
             plan = decision["plan"]
             plan_results = []
-
-            if len(plan) == 1:
-                tool_call = plan[0]
-                tool_name = tool_call.get("name")
-                is_critical = tool_call.get("is_critical", False)
-
-                if is_critical:
-                    individual_approval = input(Fore.RED + f"Confirm execution of critical action '{tool_name}({tool_call.get('arguments', {})})'? (yes/no):").lower()
-                    if individual_approval == 'yes':
-                        summary = await execute_tool_call(tool_call)
-                        plan_results.append(f"Tool {tool_name} executed: {summary}")
-                    else:
-                        print(Fore.RED + "Action aborted by user.")
-                        plan_results.append(f"Tool {tool_name} aborted by user.")
-                else:
-                    summary = await execute_tool_call(tool_call)
-                    plan_results.append(f"Tool {tool_name} executed: {summary}")
-
-            else:
-                print(Fore.YELLOW + "The AI has proposed a plan:")
-                for i, step in enumerate(plan, 1):
-                    tool_name = step.get("name")
-                    tool_args = step.get("arguments", {})
-                    is_critical = step.get("is_critical", False)
-                    critical_tag = Fore.RED + "[CRITICAL]" if is_critical else ""
-                    print(Fore.YELLOW + f"  Step {i}: {tool_name}({tool_args}) {critical_tag}")
-                
-                overall_approval = input("Execute this plan? (yes/no):").lower()
-                if overall_approval == 'yes':
-                    for tool_call in plan:
-                        tool_name = tool_call.get("name")
-                        is_critical = tool_call.get("is_critical", False)
-
-                        if is_critical:
-                            individual_approval = input(Fore.RED + f"Confirm execution of critical action '{tool_name}({tool_call.get('arguments', {})})'? (yes/no):").lower()
-                            if individual_approval == 'yes':
-                                summary = await execute_tool_call(tool_call)
-                                plan_results.append(f"Tool {tool_name} executed: {summary}")
-                            else:
-                                print(Fore.RED + "Action aborted by user.")
-                                plan_results.append(f"Tool {tool_name} aborted by user.")
-                                break
-                        else:
-                            summary = await execute_tool_call(tool_call)
-                            plan_results.append(f"Tool {tool_name} executed: {summary}")
-                else:
-                    print(Fore.RED + "Plan aborted by user.")
-                    history.append("Agent: Plan aborted by user.")
-
-            if plan_results:
-                history.append(f"Agent: Plan Execution Results: {'; '.join(plan_results)}")
             
+            print(Fore.YELLOW + "The AI has proposed a plan:")
+            for i, step in enumerate(plan, 1):
+                critical_tag = Fore.RED + "[CRITICAL]" if step.get("is_critical") else ""
+                print(Fore.YELLOW + f"  Step {i}: {step['thought']} ({step['tool']}) {critical_tag}")
+
+            approval = input("Execute this plan? (yes/no): ").lower()
+            if approval != 'yes':
+                print(Fore.RED + "Plan aborted by user.")
+                history.append("Agent: Plan aborted by user.")
+                continue
+
+            step_outputs = []
+            for i, step in enumerate(plan):
+                print(Fore.CYAN + f"\n--- Executing Step {i+1}/{len(plan)} ---")
+                print(Fore.CYAN + f"Thought: {step['thought']}")
+                print(Fore.CYAN + f"Action: {step['tool']}({step['args']})")
+
+                if step.get("is_critical"):
+                    confirm = input(Fore.RED + "Confirm execution of this critical step? (yes/no): ").lower()
+                    if confirm != 'yes':
+                        print(Fore.RED + "Step aborted by user.")
+                        plan_results.append({"tool": step['tool'], "status": "Aborted", "output": "User aborted critical step."})
+                        break
+
+                spinner.start()
+                result = await execute_tool(step["tool"], step["args"])
+                spinner.stop()
+
+                step_outputs.append(result["output"])
+                plan_results.append({"tool": step['tool'], "status": result["status"], "output": result["output"]})
+
+                if result["status"] == "Error":
+                    print(Fore.RED + f"Error in step {i+1}: {result['output']}")
+                    break
+                else:
+                    print(Fore.GREEN + f"Step {i+1} completed successfully.")
+
+                if "checkpoint" in step:
+                    # This is a simplified checkpoint evaluation. A more robust version would use another LLM call.
+                    if not result["output"] or "error" in str(result["output"]).lower() or "not found" in str(result["output"]).lower():
+                        print(Fore.YELLOW + f"Checkpoint failed for step {i+1}: {step['checkpoint']}. Halting plan.")
+                        break
+
             spinner.start()
-            final_decision = await get_agent_decision(history, current_working_directory, force_text_response=True)
+            final_summary = await summarize_plan_result(plan_results)
             spinner.stop()
 
-            if "text" in final_decision:
-                ai_response = final_decision["text"]
-                print(Fore.MAGENTA + f"AI: {ai_response}")
-                history.append(f"Agent: {ai_response}")
-            else:
-                error_msg = f"Sorry, I received an unexpected final decision format: {final_decision}"
-                print(Fore.RED + error_msg)
-                history.append(f"Agent: Error: {error_msg}")
+            print(Fore.MAGENTA + f"\nAI: {final_summary}")
+            history.append(f"Agent: {final_summary}")
 
-        elif "text" in decision:
-            ai_response = decision["text"]
-            print(Fore.MAGENTA + f"AI: {ai_response}")
-            history.append(f"Agent: {ai_response}")
-            
         else:
             error_msg = f"Sorry, I received an unexpected decision format: {decision}"
             print(Fore.RED + error_msg)

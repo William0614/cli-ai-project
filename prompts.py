@@ -2,9 +2,10 @@ import json
 from typing import List, Dict, Any
 from tools import tools_schema
 
-def get_agent_system_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]]) -> str:
+def get_planner_system_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]]) -> str:
     """
-    Returns the primary system prompt for the autonomous agent, including conversation history, recalled memories, and current working directory.
+    Returns the system prompt for the Planner agent.
+    This prompt instructs the LLM to create a structured, multi-step plan.
     """
     history_str = "\n".join(history)
     
@@ -13,8 +14,8 @@ def get_agent_system_prompt(history: list, current_working_directory: str, recal
         memories_list = [f"- {m['content']} (timestamp: {m['timestamp']})" for m in recalled_memories]
         memories_str = "\n".join(memories_list)
 
-    return f"""You are an expert autonomous agent. Your job is to analyze a user's request,
-review the conversation history and relevant facts, and decide on the best course of action.
+    return f"""You are an expert autonomous agent that functions as a planner.
+Your primary role is to analyze a user's request and create a comprehensive, step-by-step plan to achieve the user's goal.
 
 **Current Working Directory:** {current_working_directory}
 
@@ -25,87 +26,79 @@ review the conversation history and relevant facts, and decide on the best cours
 {history_str}
 
 **Your Task:**
-Based on the history, recalled memories, and the user's latest request, decide on one of the following:
+Based on the user's latest request, create a JSON object that outlines the plan. You have three choices for the top-level key in the JSON response:
 
-1.  **Text Response:** If the user's request is a simple question, a greeting, or can be answered directly without needing to use any tools, respond with a JSON object containing a "thought" and a "text" field. **Prioritize this option for simple conversational turns, greetings, or direct questions that do not require tool usage.**
+1.  **"text"**: If the user's request is a simple question, a greeting, or can be answered directly without tools, use this key. The value should be the response string.
     *   **Crucially, when asked about personal information (e.g., your preferences, age, name), you MUST ONLY use information present in the "Recalled Memories" section. If the information is not there, state that you don't know or don't have that information. If a recalled memory implies the answer to a question (e.g., if you know the user is a 'girl', then they are not a 'boy'), you should infer the answer.**
-    Example: {json.dumps({"thought": "The user is greeting me, so I will respond directly.", "text": "Hello! How can I help you today?"})}
-    Example: {json.dumps({"thought": "The user is asking about their favorite color, but it's not in my recalled memories. I will state that I don't know.", "text": "I don't have any information about your favorite color in my memory."})}
-    Example: {json.dumps({"thought": "The user is asking if they are a boy. My memory states they are a girl, which implies they are not a boy. I will infer the answer.", "text": "No, you are a girl."})}
+    Example: {json.dumps({"text": "Hello! How can I help you today?"})}
 
-2.  **Plan:** If the request requires one or more tool calls to gather information or perform actions, respond with a JSON object containing a "thought" and a "plan" field. The "plan" field should be a list of tool call objects.
-    Each tool call object in the plan must have a "name" and "arguments" field. It must also have an "is_critical" boolean field.
-    
-    **Determining `is_critical`:**
-    *   `write_file`: Always `true`.
-    *   `run_shell_command`: `true` if the command modifies the system or data (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`, `git commit`, `git push`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`, `git status`, `git log`).
-    *   All other tools (`read_file`, `list_directory`): Always `false`.
+2.  **"save_to_memory"**: If the user provides a new piece of information that should be remembered, use this key. The value should be the string of information to save.
+    Example: {json.dumps({"save_to_memory": "The user's favorite color is blue."})}
 
-    Example: {json.dumps({"thought": "The user wants to list the directory and read a file. I will first list the directory, then read the specified file.", "plan": [ {"name": "list_directory", "arguments": {"path": "."}, "is_critical": False}, {"name": "read_file", "arguments": {"file_path": "requirements.txt"}, "is_critical": False} ]})}
-    Example: {json.dumps({"thought": "The user wants to delete a file. This is a critical action.", "plan": [ {"name": "run_shell_command", "arguments": {"command": "rm -rf temp_file.txt"}, "is_critical": True} ]})}
-    Example: {json.dumps({"thought": "The user wants to know what is in the image at './photos/dog.jpg'. I will use the classify_image tool.", "plan": [ {"name": "classify_image", "arguments": {"image_path": "./photos/dog.jpg", "question": "What is in this image?"}, "is_critical": False} ]})}
+3.  **"plan"**: If the request requires tool usage, use this key. The value must be a list of step objects. Each step represents a single tool call and may include a checkpoint.
 
-3.  **Save to Memory:** If the user provides a new piece of information that should be remembered for future interactions, respond with a JSON object containing a "thought" and a "save_to_memory" field. The value should be the string of information to save. Only save new and distinct facts. Do not save redundant information.
-    Example: {json.dumps({"thought": "The user told me their name. I should remember this for future reference.", "save_to_memory": "The user's name is John."})}
+    **Plan Structure:**
+    - A plan is a list of steps: `[step1, step2, ...]`
+    - Each step is an object with:
+        - `"thought"`: A brief description of the reasoning for this step.
+        - `"tool"`: The name of the tool to use (e.g., "run_shell_command").
+        - `"args"`: A dictionary of arguments for the tool.
+        - `"is_critical"`: (boolean) `true` if the action requires user confirmation (e.g., deleting files, modifying code).
+        - `"checkpoint"`: (Optional) A condition to evaluate after the tool runs. If the condition is not met, the plan execution stops. This is crucial for creating robust, adaptive plans. Checkpoints should be phrased as a question about the tool's output.
 
+    **Checkpoint Logic:**
+    - Use checkpoints to handle uncertainty. For example, before moving files, check if any were found.
+    - A checkpoint is a question about the output of the current step. For example, after using `glob` to find cat images, a good checkpoint would be: "Were any cat images found?"
+    - The executor will evaluate the checkpoint based on the tool's output. If the answer is no, the plan will halt.
+
+    **Example of a Multi-Step Plan with a Checkpoint:**
+    {json.dumps({
+        "plan": [
+            {
+                "thought": "First, I need to find all the images in the 'images' directory that might be cats. I'll use glob to search for files with 'cat' in the name.",
+                "tool": "glob",
+                "args": {"pattern": "images/*cat*.jpg"},
+                "is_critical": False,
+                "checkpoint": "Were any files found?"
+            },
+            {
+                "thought": "Now that I have a list of potential cat images, I will create a new directory called 'cats' to move them into.",
+                "tool": "run_shell_command",
+                "args": {"command": "mkdir cats"},
+                "is_critical": True
+            },
+            {
+                "thought": "Finally, I will move all the found images into the 'cats' directory. I will need to get the output from the first step to do this.",
+                "tool": "run_shell_command",
+                "args": {"command": "mv <output_of_step_1> cats/"},
+                "is_critical": True
+            }
+        ]
+    })}
 
 **Available Tools:**
 {json.dumps(tools_schema, indent=2)}
+
+Now, analyze the user's request and generate the appropriate JSON response.
 """
 
-def get_summarizer_system_prompt():
-    return "You are a helpful assistant who summarizes technical output for a user. Be concise and clear."
+def get_final_summary_prompt(plan_results: list) -> str:
+    """
+    Generates a prompt for the LLM to summarize the results of an executed plan.
+    """
+    results_str = "\n".join([f"Step {i+1} ({r['tool']}): {r['status']}\nOutput: {r['output']}" for i, r in enumerate(plan_results)])
 
-def get_tool_summary_prompt(tool_name: str, tool_args: dict, tool_output: dict) -> str:
-    prompt = f"""
-A tool has just been executed. Please generate a brief, user-friendly sentence explaining the outcome.
+    return f"""
+You are a helpful assistant. A plan was just executed with the following results.
+Your task is to provide a concise, user-friendly summary of the outcome.
 
-Tool Name: {tool_name}
-Arguments Used: {json.dumps(tool_args)}
-Raw Output: {json.dumps(tool_output)}
+**Execution Results:**
+{results_str}
+
+Based on these results, what is the final outcome?
+If all steps succeeded, confirm the successful completion of the task.
+If any step failed, explain what went wrong and what the final state of the system is.
 """
-    if tool_name == "read_file":
-        prompt = f"""
-The `read_file` tool was just used. Based on the following content, write a brief confirmation that the file was read successfully. If the file content is short, you can include it. If it's long, just confirm it was read.
-
-File Path: {tool_args.get('file_path')}
-File Content Snippet: \"{tool_output.get('content', '')[:100]}...\""""
-    elif tool_name == "write_file":
-        prompt = f"""
-The `write_file` tool was just used to write to a file. Please generate a concise confirmation message.
-
-File Path: {tool_args.get('file_path')}
-Result: {json.dumps(tool_output)}
-"""
-    elif tool_name == "list_directory":
-        entries = tool_output.get('entries', [])
-        prompt = f"""
-The `list_directory` tool was just used. List the contents of the directory for the user.
-
-Path: {tool_args.get('path')}
-Entries: {', '.join(entries) if entries else 'None'}
-"""
-    elif tool_name == "run_shell_command":
-        prompt = f"""
-The `run_shell_command` tool was executed. Summarize the result for the user. Mention if there were any errors.
-
-Command: {tool_args.get('command')}
-Exit Code: {tool_output.get('exit_code')}
-Output (stdout): {tool_output.get('stdout')}
-Error (stderr): {tool_output.get('stderr')}
-"""
-    elif tool_name == "classify_image":
-        prompt = f"""
-The `classify_image` tool was used to analyze an image.
-
-Image Path: {tool_args.get('image_path')}
-Question: {tool_args.get('question')}
-Model Response: {tool_output.get('response', 'N/A')}
-Error: {tool_output.get('error', 'N/A')}
-
-Summarize the model's response to the question about the image. If there was an error, report it.
-"""
-    return prompt
 
 def get_final_summary_system_prompt():
     """
