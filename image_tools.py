@@ -93,10 +93,10 @@ async def classify_image(image_path: str, question: str) -> dict:
         response.raise_for_status()
         response_data = response.json()
         content = response_data['choices'][0]['message']['content']
-        return {"response": content.strip()}
+        return {"response": content.strip(), "image_path": image_path}
     except requests.exceptions.RequestException as e:
-        return {"error": f"API Error for {image_url}: {e}"}
+        return {"error": f"API Error for {image_url}: {e}", "image_path": image_path}
     except (KeyError, IndexError) as e:
-        return {"error": f"Could not parse response for {image_url}: {e}. Full response: {response_data}"}
+        return {"error": f"Could not parse response for {image_url}: {e}. Full response: {response_data}", "image_path": image_path}
     except Exception as e:
-        return {"error": f"An unexpected error occurred: {e}"}
+        return {"error": f"An unexpected error occurred: {e}", "image_path": image_path}
