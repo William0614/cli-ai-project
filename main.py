@@ -80,24 +80,35 @@ async def execute_tool(tool_name: str, tool_args: dict) -> dict:
         return {"status": "Error", "output": f"Unknown tool '{tool_name}'."}
 
 async def main():
-    print(Fore.YELLOW + "Autonomous Agent Started. Say 'exit' to quit.")
+    print(Fore.YELLOW + "Autonomous Agent Started. Type '/voice' to toggle voice input. Type 'exit' to quit.")
     spinner = Spinner()
     history = []
+    voice_input_enabled = False  # Voice input is off by default
 
     while True:
-        print(Fore.CYAN + "\nListening for your command...")
-        user_input = get_voice_input_whisper(duration=5)
-
-        if user_input:
-            print(f"> You said: {user_input}")
+        user_input = ""
+        if voice_input_enabled:
+            print(Fore.CYAN + "\nListening for your command (voice enabled)...")
+            user_input = get_voice_input_whisper(duration=5)
+            if user_input:
+                print(f"> You said: {user_input}")
+            else:
+                print(Fore.YELLOW + "No voice input detected, please use text input.")
+                user_input = input("> ")
         else:
-            print(Fore.YELLOW + "No voice input detected, please use text input.")
+            print(Fore.CYAN + "\nPlease enter your command:")
             user_input = input("> ")
 
         if not user_input:
             continue
         if user_input.lower() == "exit":
             break
+        if user_input.lower() == "/voice":
+            voice_input_enabled = not voice_input_enabled
+            status = "enabled" if voice_input_enabled else "disabled"
+            print(Fore.GREEN + f"Voice input is now {status}.")
+            continue
+
 
         history.append(f"User: {user_input}")
 
