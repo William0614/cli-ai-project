@@ -16,7 +16,7 @@ LOCAL_SERVER_PORT = 8887
 # Global variables for server management
 server_thread: Optional[threading.Thread] = None
 httpd: Optional[socketserver.TCPServer] = None
-server_running: bool = True
+server_running: bool = False
 
 class LocalImageServer(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
