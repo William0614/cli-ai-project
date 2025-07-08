@@ -1,6 +1,5 @@
 from transformers import pipeline
 import sounddevice as sd
-import numpy as npm
 from typing import Optional
 
 model_name = "openai/whisper-tiny.en"
