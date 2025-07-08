@@ -142,9 +142,33 @@ async def main():
                 continue
 
             step_outputs = []
+            plan_halted = False
             for i, step in enumerate(plan):
+                if plan_halted:
+                    break
+
                 print(Fore.CYAN + f"\n--- Executing Step {i+1}/{len(plan)} ---")
                 print(Fore.CYAN + f"Thought: {step['thought']}")
+
+                # Substitute placeholders
+                step_args_str = json.dumps(step['args'])
+                for j, prev_output in enumerate(step_outputs):
+                    placeholder = f"<output_of_step_{j+1}>"
+                    if placeholder in step_args_str:
+                        # If the output is a list, we might need to expand this step
+                        if isinstance(prev_output, list):
+                            # This step will be expanded into multiple tool calls
+                            step_args_str = step_args_str.replace(f'"{placeholder}"' , json.dumps(prev_output))
+                        else:
+                            step_args_str = step_args_str.replace(placeholder, str(prev_output))
+                
+                try:
+                    step['args'] = json.loads(step_args_str)
+                except json.JSONDecodeError:
+                    print(Fore.RED + f"Error: Could not decode arguments for step {i+1} after placeholder substitution.")
+                    plan_results.append({"tool": step['tool'], "status": "Error", "output": "Argument parsing failed."})
+                    break
+
                 print(Fore.CYAN + f"Action: {step['tool']}({step['args']})")
 
                 if step.get("is_critical"):
@@ -154,22 +178,46 @@ async def main():
                         plan_results.append({"tool": step['tool'], "status": "Aborted", "output": "User aborted critical step."})
                         break
 
-                spinner.start()
-                result = await execute_tool(step["tool"], step["args"])
-                spinner.stop()
+                # Handle list expansion
+                args_to_process = []
+                is_expanded = False
+                for arg_name, arg_value in step['args'].items():
+                    if isinstance(arg_value, list) and arg_name == 'image_path': # Specific logic for classify_image
+                        is_expanded = True
+                        for item in arg_value:
+                            new_args = step['args'].copy()
+                            new_args[arg_name] = item
+                            args_to_process.append(new_args)
+                        break
+                
+                if not is_expanded:
+                    args_to_process.append(step['args'])
 
-                step_outputs.append(result["output"])
-                plan_results.append({"tool": step['tool'], "status": result["status"], "output": result["output"]})
+                step_output_collector = []
+                for single_args in args_to_process:
+                    spinner.start()
+                    result = await execute_tool(step["tool"], single_args)
+                    spinner.stop()
 
-                if result["status"] == "Error":
-                    print(Fore.RED + f"Error in step {i+1}: {result['output']}")
-                    break
-                else:
-                    print(Fore.GREEN + f"Step {i+1} completed successfully.")
+                    if result["status"] == "Error":
+                        print(Fore.RED + f"Error in step {i+1}: {result['output']}")
+                        plan_results.append({"tool": step['tool'], "status": "Error", "output": result['output']})
+                        plan_halted = True
+                        break
+                    else:
+                        step_output_collector.append(result['output'])
+                
+                if plan_halted:
+                    continue
+
+                # Consolidate output
+                final_output = step_output_collector[0] if len(step_output_collector) == 1 else step_output_collector
+                step_outputs.append(final_output)
+                plan_results.append({"tool": step['tool'], "status": "Success", "output": final_output})
+                print(Fore.GREEN + f"Step {i+1} completed successfully.")
 
                 if "checkpoint" in step:
-                    # This is a simplified checkpoint evaluation. A more robust version would use another LLM call.
-                    if not result["output"] or "error" in str(result["output"]).lower() or "not found" in str(result["output"]).lower():
+                    if not final_output or "error" in str(final_output).lower() or "not found" in str(final_output).lower():
                         print(Fore.YELLOW + f"Checkpoint failed for step {i+1}: {step['checkpoint']}. Halting plan.")
                         break
 

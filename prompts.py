@@ -35,43 +35,27 @@ Based on the user's latest request, create a JSON object that outlines the plan.
 2.  **"save_to_memory"**: If the user provides a new piece of information that should be remembered, use this key. The value should be the string of information to save.
     Example: {json.dumps({"save_to_memory": "The user's favorite color is blue."})}
 
-3.  **"plan"**: If the request requires tool usage, use this key. The value must be a list of step objects. Each step represents a single tool call and may include a checkpoint.
+3.  **"plan"**: If the request requires tool usage, use this key. The value must be a list of step objects. Each step represents a single tool call.
 
-    **Plan Structure:**
-    - A plan is a list of steps: `[step1, step2, ...]`
-    - Each step is an object with:
-        - `"thought"`: A brief description of the reasoning for this step.
-        - `"tool"`: The name of the tool to use (e.g., "run_shell_command").
-        - `"args"`: A dictionary of arguments for the tool.
-        - `"is_critical"`: (boolean) `true` if the action requires user confirmation (e.g., deleting files, modifying code).
-        - `"checkpoint"`: (Optional) A condition to evaluate after the tool runs. If the condition is not met, the plan execution stops. This is crucial for creating robust, adaptive plans. Checkpoints should be phrased as a question about the tool's output.
+    **PLANNING RULES:**
+    - **Tool Usage:** You **MUST ONLY** use the tools defined in the schema below. **DO NOT** invent or hallucinate any tool names. If you cannot achieve the goal with the available tools, you must respond with a text message explaining the limitation.
+    - **Placeholders:** The executor can substitute output from previous steps. Use the format `<output_of_step_N>` as a placeholder in a tool's arguments. The executor will replace this with the output of step N.
+    - **Critical Actions:** An action is critical **only if it modifies, creates, or deletes files or system state** (e.g., `write_file`, `rm`, `mv`, `mkdir`). Reading or analyzing data (`read_file`, `list_directory`, `classify_image`) is **never** critical.
 
-    **Checkpoint Logic:**
-    - Use checkpoints to handle uncertainty. For example, before moving files, check if any were found.
-    - A checkpoint is a question about the output of the current step. For example, after using `glob` to find cat images, a good checkpoint would be: "Were any cat images found?"
-    - The executor will evaluate the checkpoint based on the tool's output. If the answer is no, the plan will halt.
-
-    **Example of a Multi-Step Plan with a Checkpoint:**
+    **Example Plan:**
     {json.dumps({
         "plan": [
             {
-                "thought": "First, I need to find all the images in the 'images' directory that might be cats. I'll use glob to search for files with 'cat' in the name.",
-                "tool": "glob",
-                "args": {"pattern": "images/*cat*.jpg"},
-                "is_critical": False,
-                "checkpoint": "Were any files found?"
+                "thought": "First, I need to find all the image files in the 'photos' directory.",
+                "tool": "list_directory",
+                "args": {"path": "photos"},
+                "is_critical": False
             },
             {
-                "thought": "Now that I have a list of potential cat images, I will create a new directory called 'cats' to move them into.",
-                "tool": "run_shell_command",
-                "args": {"command": "mkdir cats"},
-                "is_critical": True
-            },
-            {
-                "thought": "Finally, I will move all the found images into the 'cats' directory. I will need to get the output from the first step to do this.",
-                "tool": "run_shell_command",
-                "args": {"command": "mv <output_of_step_1> cats/"},
-                "is_critical": True
+                "thought": "Now I will classify each image found in the previous step to see if it contains a cat.",
+                "tool": "classify_image",
+                "args": {"image_path": "photos/<output_of_step_1>", "question": "Is there a cat in this image?"},
+                "is_critical": False
             }
         ]
     })}
