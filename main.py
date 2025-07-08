@@ -222,6 +222,21 @@ async def main():
 
                 # Consolidate output for the next step
                 final_output = step_output_collector[0] if len(step_output_collector) == 1 else step_output_collector
+
+                # Apply output_filter if specified
+                if 'output_filter' in step:
+                    try:
+                        # Make the raw output available as 'output' for the filter expression
+                        output = final_output
+                        filtered_output = eval(step['output_filter'])
+                        final_output = filtered_output
+                        print(Fore.GREEN + f"Output filtered: {final_output}")
+                    except Exception as e:
+                        print(Fore.RED + f"Error applying output_filter for step {i+1}: {e}")
+                        plan_results.append({"tool": step['tool'], "status": "Error", "output": f"Output filter failed: {e}"})
+                        plan_halted = True
+                        continue
+
                 step_outputs.append(final_output)
                 plan_results.append({"tool": step['tool'], "status": "Success", "output": final_output})
                 print(Fore.GREEN + f"Step {i+1} completed successfully.")
