@@ -228,14 +228,8 @@ async def main():
                 # Apply output_filter if specified
                 if 'output_filter' in step:
                     try:
-                        # Ensure output is always a list for filtering if it's not already
-                        if isinstance(final_output, dict) and 'entries' in final_output:
-                            output_for_filter = final_output['entries']
-                        else:
-                            output_for_filter = final_output if isinstance(final_output, list) else [final_output]
-                        
                         # Make the raw output available as 'output' for the filter expression
-                        output = output_for_filter
+                        output = final_output
                         filtered_output = eval(step['output_filter'], {'output': output})
                         final_output = filtered_output
                         print(Fore.GREEN + f"Output filtered: {final_output}")

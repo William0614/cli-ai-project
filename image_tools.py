@@ -59,8 +59,8 @@ async def parse_boolean_response(text_response: str, boolean_question: str) -> O
         response = await client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that parses text into a boolean. Respond with only 'true', 'false', or 'ambiguous'."},
-                {"role": "user", "content": f"Given the text: \"{text_response}\". Does it answer \"{boolean_question}\"? Respond with 'true', 'false', or 'ambiguous'."}
+                {"role": "system", "content": "You are an assistant that determines if a text response confirms a yes/no question. Respond with only 'true', 'false', or 'ambiguous'. If the text confirms the subject of the question exists, respond 'true', even if it provides extra details."},
+                {"role": "user", "content": f"Text: \"{text_response}\". Question: \"{boolean_question}\". Does the text confirm the question?"}
             ],
             max_tokens=10,
             temperature=0.0
