@@ -101,7 +101,22 @@ def substitute_placeholders(args: dict, step_outputs: list) -> dict:
                     current_args[arg_name] = eval(current_args[arg_name], {'prev_output': prev_output})
     return current_args
 
-async def get_user_input(voice_input_enabled: bool) -> tuple[str, bool]:    user_input = ""    if voice_input_enabled:        print(Fore.CYAN + "\nListening for your command (voice enabled)...")        user_input = get_voice_input_whisper(duration=5)        if user_input:            print(f"> You said: {user_input}")        else:            print(Fore.YELLOW + "No voice input detected, please use text input.")            user_input = input("> ")    else:        print(Fore.CYAN + "\nPlease enter your command:")        user_input = input("> ")    return user_input, voice_input_enabledasync def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
+async def get_user_input(voice_input_enabled: bool) -> tuple[str, bool]:
+    user_input = ""
+    if voice_input_enabled:
+        print(Fore.CYAN + "\nListening for your command (voice enabled)...")
+        user_input = get_voice_input_whisper(duration=5)
+        if user_input:
+            print(f"> You said: {user_input}")
+        else:
+            print(Fore.YELLOW + "No voice input detected, please use text input.")
+            user_input = input("> ")
+    else:
+        print(Fore.CYAN + "Please enter your command:")
+        user_input = input("> ")
+    return user_input, voice_input_enabled
+
+async def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
     plan_results = []
     step_outputs = []
     plan_halted = False
