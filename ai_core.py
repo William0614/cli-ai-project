@@ -21,7 +21,7 @@ async def create_plan(history: list, current_working_directory: str) -> dict:
 
     try:
         response = await client.chat.completions.create(
-            model="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
+            model="Qwen/Qwen2.5-Coder-32B-Instruct",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
@@ -41,7 +41,7 @@ async def create_plan(history: list, current_working_directory: str) -> dict:
         return {"text": "Sorry, an error occurred while creating a plan."}
 
 async def summarize_plan_result(plan_results: list) -> str:
-    """Asks the LLM to generate a final summary of the plan's execution."""
+    """Asks the LLM to generate an ultimate response to the user prompt using the outcome of the plan's execution."""
     if not plan_results:
         return "The plan was empty or not executed."
 
@@ -49,12 +49,12 @@ async def summarize_plan_result(plan_results: list) -> str:
 
     try:
         response = await client.chat.completions.create(
-            model="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
+            model="Qwen/Qwen2.5-Coder-32B-Instruct",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant who summarizes plan execution results."},
+                {"role": "system", "content": "You are a helpful assistant who answers the user prompt using plan execution results."},
                 {"role": "user", "content": summary_prompt}
             ],
-            max_tokens=200,
+            max_tokens=1000,
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
