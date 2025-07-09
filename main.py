@@ -14,10 +14,11 @@ from colorama import init, Fore
 
 init(autoreset=True)
 
+
 # --- The Loading Spinner Class ---
 class Spinner:
     def __init__(self, message="Thinking..."):
-        self.spinner = itertools.cycle(['-', '/', '|', '\\'])
+        self.spinner = itertools.cycle(["-", "/", "|", "\\"])
         self.message = message
         self.running = False
         self.thread = None
@@ -40,9 +41,11 @@ class Spinner:
         if self.thread:
             self.thread.join()
 
+
 # --- Main Application Logic ---
 
 current_working_directory = os.getcwd()
+
 
 async def execute_tool(tool_name: str, tool_args: dict) -> dict:
     global current_working_directory
@@ -55,20 +58,23 @@ async def execute_tool(tool_name: str, tool_args: dict) -> dict:
                 target_path = new_path
             else:
                 target_path = os.path.join(current_working_directory, new_path)
-            
+
             target_path = os.path.normpath(target_path)
 
             if os.path.isdir(target_path):
                 current_working_directory = target_path
-                return {"status": "Success", "output": f"Changed directory to {current_working_directory}"}
+                return {
+                    "status": "Success",
+                    "output": f"Changed directory to {current_working_directory}",
+                }
             else:
                 return {"status": "Error", "output": f"Directory not found: {new_path}"}
-        
+
         tool_args["directory"] = current_working_directory
 
     if tool_name in available_tools:
         tool_function = available_tools[tool_name]
-        
+
         try:
             if inspect.iscoroutinefunction(tool_function):
                 raw_output = await tool_function(**tool_args)
@@ -83,23 +89,53 @@ async def execute_tool(tool_name: str, tool_args: dict) -> dict:
     else:
         return {"status": "Error", "output": f"Unknown tool '{tool_name}'."}
 
+
 def substitute_placeholders(args: dict, step_outputs: list) -> dict:
     import re
-    current_args = json.loads(json.dumps(args)) # Deep copy
+
+    current_args = json.loads(json.dumps(args))  # Deep copy
 
     for arg_name, arg_value in list(current_args.items()):
         if isinstance(arg_value, str) and "<output_of_step_" in arg_value:
-            match = re.search(r"<output_of_step_(\\d+)>", arg_value)
-            if match:
-                step_num_to_get = int(match.group(1))
+            # Find all placeholder expressions in the string
+            # e.g., "<output_of_step_1>['result']" or "<output_of_step_2>.some_attribute"
+            # This regex captures the full placeholder expression
+            matches = re.findall(
+                r"(<output_of_step_(\d+)>(\[.*?\]|\\.[\\w_]+)*)", arg_value
+            )
+
+            for full_placeholder_str, step_num_str, _ in matches:
+                step_num_to_get = int(step_num_str)
                 if 0 < step_num_to_get <= len(step_outputs):
                     prev_output = step_outputs[step_num_to_get - 1]
-                    # Replace placeholder with the actual output, allowing for direct access to keys
-                    # e.g., "<output_of_step_1>['result']"
-                    current_args[arg_name] = arg_value.replace(match.group(0), f"prev_output")
-                    # Evaluate the string to get the actual value
-                    current_args[arg_name] = eval(current_args[arg_name], {'prev_output': prev_output})
+
+                    # Construct the Python expression to evaluate
+                    # Replace the placeholder part with "prev_output"
+                    python_expression = full_placeholder_str.replace(
+                        f"<output_of_step_{step_num_str}>", "prev_output"
+                    )
+
+                    try:
+                        evaluated_value = eval(
+                            python_expression, {"prev_output": prev_output}
+                        )
+                        # Replace the original placeholder string with the evaluated value
+                        # This handles cases like "photos/<output_of_step_1>['result']"
+                        current_args[arg_name] = arg_value.replace(
+                            full_placeholder_str, str(evaluated_value)
+                        )
+                    except Exception as e:
+                        print(
+                            f"Warning: Could not evaluate placeholder expression '{python_expression}': {e}"
+                        )
+                        # If eval fails, keep the original arg_value to avoid breaking the plan
+                        current_args[arg_name] = arg_value
+                else:
+                    print(
+                        f"Warning: Placeholder {full_placeholder_str} refers to an invalid step number."
+                    )
     return current_args
+
 
 async def get_user_input(voice_input_enabled: bool) -> tuple[str, bool]:
     user_input = ""
@@ -116,6 +152,7 @@ async def get_user_input(voice_input_enabled: bool) -> tuple[str, bool]:
         user_input = input("> ")
     return user_input, voice_input_enabled
 
+
 async def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
     plan_results = []
     step_outputs = []
@@ -124,13 +161,16 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
     print(Fore.YELLOW + "The AI has proposed a plan:")
     for i, step in enumerate(plan, 1):
         critical_tag = Fore.RED + "[CRITICAL]" if step.get("is_critical") else ""
-        print(Fore.YELLOW + f"  Step {i}: {step['thought']} ({step['tool']}) {critical_tag}")
+        print(
+            Fore.YELLOW
+            + f"  Step {i}: {step['thought']} ({step['tool']}) {critical_tag}"
+        )
 
     approval = input("Execute this plan? (yes/no): ").lower()
-    if approval != 'yes':
+    if approval != "yes":
         print(Fore.RED + "Plan aborted by user.")
         history.append("Agent: Plan aborted by user.")
-        return plan_results # Return empty results if aborted
+        return plan_results  # Return empty results if aborted
 
     for i, step in enumerate(plan):
         if plan_halted:
@@ -139,12 +179,12 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
         print(Fore.CYAN + f"\n--- Executing Step {i+1}/{len(plan)} ---")
         print(Fore.CYAN + f"Thought: {step['thought']}")
 
-        current_args = substitute_placeholders(step['args'], step_outputs)
+        current_args = substitute_placeholders(step["args"], step_outputs)
 
         # --- Tool Execution Logic (with expansion) ---
         args_to_process = []
         is_expanded = False
-        
+
         # Check if any argument value is a list that requires expansion
         for arg_name, arg_value in current_args.items():
             if isinstance(arg_value, list):
@@ -153,8 +193,8 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
                     new_args = current_args.copy()
                     new_args[arg_name] = item
                     args_to_process.append(new_args)
-                break # Assume only one arg can be expanded per step
-        
+                break  # Assume only one arg can be expanded per step
+
         if not is_expanded:
             args_to_process.append(current_args)
 
@@ -163,10 +203,18 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
             print(Fore.CYAN + f"Action: {step['tool']}({single_args})")
 
             if step.get("is_critical"):
-                confirm = input(Fore.RED + "Confirm execution of this critical step? (yes/no): ").lower()
-                if confirm != 'yes':
+                confirm = input(
+                    Fore.RED + "Confirm execution of this critical step? (yes/no): "
+                ).lower()
+                if confirm != "yes":
                     print(Fore.RED + "Step aborted by user.")
-                    plan_results.append({"tool": step['tool'], "status": "Aborted", "output": "User aborted critical step."})
+                    plan_results.append(
+                        {
+                            "tool": step["tool"],
+                            "status": "Aborted",
+                            "output": "User aborted critical step.",
+                        }
+                    )
                     plan_halted = True
                     break
 
@@ -176,30 +224,53 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
 
             if result["status"] == "Error":
                 print(Fore.RED + f"Error in step {i+1}: {result['output']}")
-                plan_results.append({"tool": step['tool'], "status": "Error", "output": result['output']})
+                plan_results.append(
+                    {
+                        "tool": step["tool"],
+                        "status": "Error",
+                        "output": result["output"],
+                    }
+                )
                 plan_halted = True
                 break
             else:
-                step_output_collector.append(result['output'])
-        
+                step_output_collector.append(result["output"])
+
         if plan_halted:
             continue
 
         # Consolidate output for the next step
-        final_output = step_output_collector[0] if len(step_output_collector) == 1 else step_output_collector
+        final_output = (
+            step_output_collector[0]
+            if len(step_output_collector) == 1
+            else step_output_collector
+        )
 
         step_outputs.append(final_output)
-        plan_results.append({"tool": step['tool'], "status": "Success", "output": final_output})
+        plan_results.append(
+            {"tool": step["tool"], "status": "Success", "output": final_output}
+        )
         print(Fore.GREEN + f"Step {i+1} completed successfully.")
 
         if "checkpoint" in step:
-            if not final_output or "error" in str(final_output).lower() or "not found" in str(final_output).lower():
-                print(Fore.YELLOW + f"Checkpoint failed for step {i+1}: {step['checkpoint']}. Halting plan.")
+            if (
+                not final_output
+                or "error" in str(final_output).lower()
+                or "not found" in str(final_output).lower()
+            ):
+                print(
+                    Fore.YELLOW
+                    + f"Checkpoint failed for step {i+1}: {step['checkpoint']}. Halting plan."
+                )
                 break
     return plan_results
 
+
 async def main():
-    print(Fore.YELLOW + "Autonomous Agent Started. Type '/voice' to toggle voice input. Type 'exit' to quit.")
+    print(
+        Fore.YELLOW
+        + "Autonomous Agent Started. Type '/voice' to toggle voice input. Type 'exit' to quit."
+    )
     spinner = Spinner()
     history = []
     voice_input_enabled = False  # Voice input is off by default
@@ -216,7 +287,6 @@ async def main():
             status = "enabled" if voice_input_enabled else "disabled"
             print(Fore.GREEN + f"Voice input is now {status}.")
             continue
-
 
         history.append(f"User: {user_input}")
 
@@ -238,26 +308,7 @@ async def main():
             plan = decision["plan"]
             plan_results = await execute_plan(plan, spinner, history)
 
-            
-
-                
-
-
-
-                # --- Tool Execution Logic (with expansion) ---
-                
-                
-                
-
-                
-
-                
-
-                
-
-                
-
-                
+            # --- Tool Execution Logic (with expansion) ---
 
             spinner.start()
             final_summary = await summarize_plan_result(plan_results)
@@ -271,11 +322,15 @@ async def main():
             print(Fore.RED + error_msg)
             history.append(f"Agent: Error: {error_msg}")
 
+
 if __name__ == "__main__":
     try:
-        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'agent_memory.db')
+        db_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "agent_memory.db"
+        )
         if not os.path.exists(db_path):
             from database import initialize_db
+
             initialize_db()
             print("Database initialized.")
         asyncio.run(main())
