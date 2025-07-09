@@ -12,6 +12,11 @@ from colorama import init, Fore
 
 init(autoreset=True)
 
+# --- START: New Configuration Setting ---
+# Set to True to require user confirmation before each tool call.
+CONFIRMATION_REQUIRED_BY_DEFAULT = True
+# --- END: New Configuration Setting ---
+
 # --- The Loading Spinner Class ---
 class Spinner:
     def __init__(self, message="Thinking..."):
@@ -25,31 +30,38 @@ class Spinner:
             sys.stdout.write(f"\r{Fore.YELLOW}{self.message} {next(self.spinner)}")
             sys.stdout.flush()
             time.sleep(0.1)
+        # Clear the line when stopping
         sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")
         sys.stdout.flush()
 
     def start(self):
-        self.running = True
-        self.thread = threading.Thread(target=self._spin)
-        self.thread.start()
+        if not self.running:
+            self.running = True
+            self.thread = threading.Thread(target=self._spin)
+            self.thread.start()
 
     def stop(self):
-        self.running = False
-        if self.thread:
-            self.thread.join()
+        if self.running:
+            self.running = False
+            if self.thread:
+                self.thread.join()
 
 # --- Main Application Logic ---
-
+global current_working_directory
 current_working_directory = os.getcwd()
+
+def get_directory() -> str:
+    return current_working_directory
 
 async def execute_tool_call(tool_call: dict) -> str:
     global current_working_directory
 
-    tool_name = tool_call.get("name")
-    tool_args = tool_call.get("arguments", {})
-    
+    tool_name = tool_call["name"]
+    tool_args = tool_call["parameters"]
+
     if tool_name == "run_shell_command":
         command = tool_args.get("command", "")
+        # This logic correctly handles the 'cd' command within the tool execution.
         if command.strip().startswith("cd "):
             new_path = command.strip()[3:].strip()
             if os.path.isabs(new_path):
@@ -74,7 +86,9 @@ async def execute_tool_call(tool_call: dict) -> str:
     if tool_name in available_tools:
         tool_function = available_tools[tool_name]
         
-        print(Fore.CYAN + f"Action: {tool_name}({tool_args})")
+        # The print statement is now part of the confirmation prompt,
+        # but we can keep one here for when confirmation is disabled.
+        print(Fore.CYAN + f"Executing: {tool_name}({tool_args})")
         
         if inspect.iscoroutinefunction(tool_function):
             raw_output = await tool_function(**tool_args)
@@ -90,108 +104,107 @@ async def execute_tool_call(tool_call: dict) -> str:
         return error_msg
 
 async def main():
-    print(Fore.YELLOW + "Autonomous Agent Started. Type 'exit' to quit.")
+    print(Fore.YELLOW + "Adaptive Autonomous Agent Started. Type 'exit' to quit.")
     spinner = Spinner()
-    history = []
+    conversation_history = []
+    max_steps_per_task = 10 
 
     while True:
-        user_input = input("\n> ")
-        if not user_input:
+        print(f"Current Directory: {current_working_directory}")
+        initial_user_prompt = input(f"\n{Fore.GREEN}> ")
+        if not initial_user_prompt:
             continue
-        if user_input.lower() == "exit":
+        if initial_user_prompt.lower() == "exit":
             break
 
-        history.append(f"User: {user_input}")
+        conversation_history.append(f"User: {initial_user_prompt}")
 
-        spinner.start()
-        decision = await get_agent_decision(history, current_working_directory)
-        spinner.stop()
+        # --- MODIFIED: Reset confirmation for each new task ---
+        task_confirmation_enabled = CONFIRMATION_REQUIRED_BY_DEFAULT
+        task_scratchpad = []
+        task_in_progress = True
+        step_counter = 0
 
-        if "thought" in decision:
-            print(Fore.BLUE + f"Thought: {decision['thought']}")
+        while task_in_progress and step_counter < max_steps_per_task:
 
-        if "save_to_memory" in decision:
-            fact_to_save = decision["save_to_memory"]
-            memory.save_memory(fact_to_save, {"type": "declarative"})
-            print(Fore.GREEN + f"Saved to memory: {fact_to_save}")
-
-        elif "plan" in decision:
-            plan = decision["plan"]
-            plan_results = []
-
-            if len(plan) == 1:
-                tool_call = plan[0]
-                tool_name = tool_call.get("name")
-                is_critical = tool_call.get("is_critical", False)
-
-                if is_critical:
-                    individual_approval = input(Fore.RED + f"Confirm execution of critical action '{tool_name}({tool_call.get('arguments', {})})'? (yes/no):").lower()
-                    if individual_approval == 'yes':
-                        summary = await execute_tool_call(tool_call)
-                        plan_results.append(f"Tool {tool_name} executed: {summary}")
-                    else:
-                        print(Fore.RED + "Action aborted by user.")
-                        plan_results.append(f"Tool {tool_name} aborted by user.")
-                else:
-                    summary = await execute_tool_call(tool_call)
-                    plan_results.append(f"Tool {tool_name} executed: {summary}")
-
-            else:
-                print(Fore.YELLOW + "The AI has proposed a plan:")
-                for i, step in enumerate(plan, 1):
-                    tool_name = step.get("name")
-                    tool_args = step.get("arguments", {})
-                    is_critical = step.get("is_critical", False)
-                    critical_tag = Fore.RED + "[CRITICAL]" if is_critical else ""
-                    print(Fore.YELLOW + f"  Step {i}: {tool_name}({tool_args}) {critical_tag}")
-                
-                overall_approval = input("Execute this plan? (yes/no):").lower()
-                if overall_approval == 'yes':
-                    for tool_call in plan:
-                        tool_name = tool_call.get("name")
-                        is_critical = tool_call.get("is_critical", False)
-
-                        if is_critical:
-                            individual_approval = input(Fore.RED + f"Confirm execution of critical action '{tool_name}({tool_call.get('arguments', {})})'? (yes/no):").lower()
-                            if individual_approval == 'yes':
-                                summary = await execute_tool_call(tool_call)
-                                plan_results.append(f"Tool {tool_name} executed: {summary}")
-                            else:
-                                print(Fore.RED + "Action aborted by user.")
-                                plan_results.append(f"Tool {tool_name} aborted by user.")
-                                break
-                        else:
-                            summary = await execute_tool_call(tool_call)
-                            plan_results.append(f"Tool {tool_name} executed: {summary}")
-                else:
-                    print(Fore.RED + "Plan aborted by user.")
-                    history.append("Agent: Plan aborted by user.")
-
-            if plan_results:
-                history.append(f"Agent: Plan Execution Results: {'; '.join(plan_results)}")
-            
+            print('--------------')
+            print(task_scratchpad)
+            print('--------------')
+            step_counter += 1
             spinner.start()
-            final_decision = await get_agent_decision(history, current_working_directory, force_text_response=True)
+            decision = await get_agent_decision(
+                conversation_history,
+                initial_user_prompt,
+                task_scratchpad, 
+                current_working_directory
+            )
             spinner.stop()
 
-            if "text" in final_decision:
-                ai_response = final_decision["text"]
-                print(Fore.MAGENTA + f"AI: {ai_response}")
-                history.append(f"Agent: {ai_response}")
-            else:
-                error_msg = f"Sorry, I received an unexpected final decision format: {final_decision}"
-                print(Fore.RED + error_msg)
-                history.append(f"Agent: Error: {error_msg}")
+            # --- START: Major Change - Confirmation Logic ---
+            if "tool_call" in decision:
+                tool_call = decision["tool_call"]
+                
+                user_approved_action = False
+                action_summary = ""
 
-        elif "text" in decision:
-            ai_response = decision["text"]
-            print(Fore.MAGENTA + f"AI: {ai_response}")
-            history.append(f"Agent: {ai_response}")
-            
-        else:
-            error_msg = f"Sorry, I received an unexpected decision format: {decision}"
+                if not task_confirmation_enabled:
+                    user_approved_action = True
+                else:
+                    # Formulate the question for the user
+                    tool_name = tool_call["name"]
+                    tool_args = tool_call["parameters"]
+                    prompt_message = f"Proposed Action: {Fore.CYAN}{tool_name}({tool_args})"
+                    
+                    user_choice = input(f"{prompt_message}\n{Fore.YELLOW}Proceed? (y/n/a - yes/no/always for this task): ").lower()
+
+                    if user_choice in ['y', 'yes']:
+                        user_approved_action = True
+                    elif user_choice in ['a', 'always']:
+                        user_approved_action = True
+                        task_confirmation_enabled = False # Disable confirmation for the rest of this task
+                        print(Fore.GREEN + "Confirmation disabled for the remainder of this task.")
+                    else: # 'n', 'no', or anything else is a rejection
+                        action_summary = "User rejected the proposed action."
+                        print(Fore.RED + action_summary)
+                        user_approved_action = False
+
+                # Execute the action only if approved
+                if user_approved_action:
+                    action_summary = await execute_tool_call(tool_call)
+                else:
+                    break
+                # Record the action and its result (either success, failure, or user rejection)
+                task_scratchpad.append(f"Action: {tool_call['name']}({tool_call['parameters']})")
+                task_scratchpad.append(f"Observation: {action_summary}")
+            # --- END: Major Change - Confirmation Logic ---
+
+            elif "final_answer" in decision:
+                ai_response = decision["final_answer"]
+                print(Fore.MAGENTA + f"AI: {ai_response}")
+                
+                task_in_progress = False
+                conversation_history.append(f"Agent: {ai_response}")
+                
+                if task_scratchpad:
+                    memory_entry = (
+                        f"On the task '{initial_user_prompt}', I took these steps:\n"
+                        + "\n".join(task_scratchpad)
+                        + f"\nAnd concluded with: {ai_response}"
+                    )
+                    memory.save_memory(memory_entry, {"type": "procedural_summary"})
+                    print(Fore.GREEN + "Saved task summary to long-term memory.")
+
+            else:
+                error_msg = f"Error: Agent returned an invalid decision format: {decision}"
+                print(Fore.RED + error_msg)
+                conversation_history.append(f"Agent: Error: {error_msg}")
+                task_in_progress = False
+
+        if step_counter >= max_steps_per_task:
+            error_msg = "Error: Maximum steps reached for this task. Aborting."
             print(Fore.RED + error_msg)
-            history.append(f"Agent: Error: {error_msg}")
+            conversation_history.append(f"Agent: {error_msg}")
+
 
 if __name__ == "__main__":
     try:

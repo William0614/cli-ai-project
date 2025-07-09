@@ -7,8 +7,19 @@ import asyncio
 import aiofiles
 import os
 from image_tools import classify_folder
+from pathlib import Path
 
 # --- 1. ASYNC TOOL IMPLEMENTATIONS ---
+
+def relative_path() -> str:
+    from main import current_working_directory
+    current_path = current_working_directory
+    root = Path(os.getcwd()).resolve()
+    current = Path(current_path).resolve()
+    relative_path = current.relative_to(root)
+
+    return str(relative_path)
+
 
 async def run_shell_command(command: str, directory: Optional[str] = None) -> dict:
     """Executes a shell command asynchronously and returns its structured output."""
@@ -64,7 +75,7 @@ async def write_file(file_path: str, content: str) -> dict:
 def list_directory(path: str = '.') -> dict:
     """Lists a directory and returns its contents as a list."""
     try:
-        entries = os.listdir(path)
+        entries = os.listdir(relative_path()+'/'+ path)
         return {"entries": entries}
     except Exception as e:
         return {"error": str(e)}
@@ -119,7 +130,7 @@ tools_schema = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "file_path": {"type": "string", "description": "The path to the file."},
+                    "file_path": {"type": "string", "description": "The absolute path to the file."},
                     "content": {"type": "string", "description": "The content to write."}
                 },
                 "required": ["file_path", "content"]
@@ -134,7 +145,7 @@ tools_schema = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "The directory path."}
+                    "path": {"type": "string", "description": "The RELATIVE directory path. YOUR CURRENT PATH IS THE Current Working Directory."}
                 },
                 "required": ["path"]
             }
@@ -148,7 +159,7 @@ tools_schema = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "folder_path": {"type": "string", "description": "The absolute path to the folder."},
+                    "folder_path": {"type": "string", "description": "The RELATIVE path to the folder."},
                     "property": {"type": "string", "description": "The property of the desired images, e.g., 'Dogs', 'Human smiling'."}
                 },
                 "required": ["folder_path", "property"]
