@@ -52,51 +52,6 @@ def start_local_server_if_not_running():
         print(f"Error starting local image server: {e}")
         server_running = False
 
-async def parse_boolean_response(text_response: str, boolean_question: str) -> Optional[bool]:
-    """Uses an LLM to parse a text response into a boolean (True/False/None for ambiguous)."""
-    print(f"DEBUG: parse_boolean_response - text_response: {text_response}, boolean_question: {boolean_question}")
-    try:
-        response = await client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": "You are an assistant that determines if a text response confirms a yes/no question. Respond with only 'true', 'false', or 'ambiguous'. If the text confirms the subject of the question exists, respond 'true', even if it provides extra details."},
-                {"role": "user", "content": f"Text: \"{text_response}\". Question: \"{boolean_question}\". Does the text confirm the question?"}
-            ],
-            max_tokens=10,
-            temperature=0.0
-        )
-        parsed_content = response.choices[0].message.content.strip().lower()
-        print(f"DEBUG: parse_boolean_response - parsed_content: {parsed_content}")
-        if parsed_content == "true":
-            return True
-        elif parsed_content == "false":
-            return False
-        else:
-            return None # Ambiguous
-    except Exception as e:
-        print(f"Error parsing boolean response: {e}")
-        return None
-
-async def is_boolean_question(question: str) -> bool:
-    """Uses an LLM to determine if a question is a boolean (yes/no) type."""
-    print(f"DEBUG: is_boolean_question - question: {question}")
-    try:
-        response = await client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that classifies questions. Respond with only 'true' if the question is a boolean (yes/no) question, otherwise 'false'."},
-                {"role": "user", "content": f"Is the following a boolean question: \"{question}\"?"}
-            ],
-            max_tokens=10,
-            temperature=0.0
-        )
-        parsed_content = response.choices[0].message.content.strip().lower()
-        print(f"DEBUG: is_boolean_question - parsed_content: {parsed_content}")
-        return parsed_content == "true"
-    except Exception as e:
-        print(f"Error determining boolean question: {e}")
-        return False
-
 async def classify_image(image_path: str, question: str) -> dict:
     """Classifies an image using the Qwen model via a local server.
 
@@ -113,16 +68,12 @@ async def classify_image(image_path: str, question: str) -> dict:
         return {"error": f"Image file not found at {image_path}"}
 
     # Construct the URL for the image relative to the server's root
-    # Assuming the server serves from the current working directory
-    # We need to make the path relative to the CWD for the server to find it
     try:
         relative_image_path = os.path.relpath(image_path, os.getcwd())
     except ValueError:
-        # If image_path is on a different drive on Windows, relpath might fail
-        # In such cases, we might need a more sophisticated server or a different approach
         return {"error": f"Image path {image_path} is not relative to the current working directory. Cannot serve."}
 
-    image_url = f"http://172.17.0.1:{LOCAL_SERVER_PORT}/cli-ai-project/{relative_image_path}"
+    image_url = f"http://localhost:{LOCAL_SERVER_PORT}/{relative_image_path}"
 
     payload = {
         "model": MODEL_NAME,
@@ -135,7 +86,7 @@ async def classify_image(image_path: str, question: str) -> dict:
                 ]
             }
         ],
-        "max_tokens": 100, # Allow for more descriptive answers
+        "max_tokens": 100,
         "temperature": 0.0
     }
     headers = {"Content-Type": "application/json"}
@@ -144,15 +95,16 @@ async def classify_image(image_path: str, question: str) -> dict:
         response = requests.post(API_URL, headers=headers, json=payload)
         response.raise_for_status()
         response_data = response.json()
-        content = response_data['choices'][0]['message']['content']
+        content = response_data['choices'][0]['message']['content'].strip().lower()
         
-        result = {"response": content.strip(), "image_path": image_path}
+        # Simplified boolean check
+        is_match = content.startswith('yes')
 
-        # If the question implies a yes/no answer, try to parse it into a boolean
-        if await is_boolean_question(question):
-            is_match = await parse_boolean_response(content, question)
-            if is_match is not None:
-                result["is_match"] = is_match
+        result = {
+            "response": content, 
+            "image_path": image_path,
+            "is_match": is_match
+        }
 
         return result
     except requests.exceptions.RequestException as e:

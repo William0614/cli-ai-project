@@ -74,11 +74,114 @@ async def execute_tool(tool_name: str, tool_args: dict) -> dict:
                 raw_output = await tool_function(**tool_args)
             else:
                 raw_output = tool_function(**tool_args)
-            return {"status": "Success", "output": raw_output}
+            if "error" in raw_output:
+                return {"status": "Error", "output": raw_output["error"]}
+            else:
+                return {"status": "Success", "output": raw_output}
         except Exception as e:
             return {"status": "Error", "output": f"Tool execution failed: {e}"}
     else:
         return {"status": "Error", "output": f"Unknown tool '{tool_name}'."}
+
+def substitute_placeholders(args: dict, step_outputs: list) -> dict:
+    import re
+    current_args = json.loads(json.dumps(args)) # Deep copy
+
+    for arg_name, arg_value in list(current_args.items()):
+        if isinstance(arg_value, str) and "<output_of_step_" in arg_value:
+            match = re.search(r"<output_of_step_(\\d+)>", arg_value)
+            if match:
+                step_num_to_get = int(match.group(1))
+                if 0 < step_num_to_get <= len(step_outputs):
+                    prev_output = step_outputs[step_num_to_get - 1]
+                    # Replace placeholder with the actual output, allowing for direct access to keys
+                    # e.g., "<output_of_step_1>['result']"
+                    current_args[arg_name] = arg_value.replace(match.group(0), f"prev_output")
+                    # Evaluate the string to get the actual value
+                    current_args[arg_name] = eval(current_args[arg_name], {'prev_output': prev_output})
+    return current_args
+
+async def get_user_input(voice_input_enabled: bool) -> tuple[str, bool]:    user_input = ""    if voice_input_enabled:        print(Fore.CYAN + "\nListening for your command (voice enabled)...")        user_input = get_voice_input_whisper(duration=5)        if user_input:            print(f"> You said: {user_input}")        else:            print(Fore.YELLOW + "No voice input detected, please use text input.")            user_input = input("> ")    else:        print(Fore.CYAN + "\nPlease enter your command:")        user_input = input("> ")    return user_input, voice_input_enabledasync def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
+    plan_results = []
+    step_outputs = []
+    plan_halted = False
+
+    print(Fore.YELLOW + "The AI has proposed a plan:")
+    for i, step in enumerate(plan, 1):
+        critical_tag = Fore.RED + "[CRITICAL]" if step.get("is_critical") else ""
+        print(Fore.YELLOW + f"  Step {i}: {step['thought']} ({step['tool']}) {critical_tag}")
+
+    approval = input("Execute this plan? (yes/no): ").lower()
+    if approval != 'yes':
+        print(Fore.RED + "Plan aborted by user.")
+        history.append("Agent: Plan aborted by user.")
+        return plan_results # Return empty results if aborted
+
+    for i, step in enumerate(plan):
+        if plan_halted:
+            break
+
+        print(Fore.CYAN + f"\n--- Executing Step {i+1}/{len(plan)} ---")
+        print(Fore.CYAN + f"Thought: {step['thought']}")
+
+        current_args = substitute_placeholders(step['args'], step_outputs)
+
+        # --- Tool Execution Logic (with expansion) ---
+        args_to_process = []
+        is_expanded = False
+        
+        # Check if any argument value is a list that requires expansion
+        for arg_name, arg_value in current_args.items():
+            if isinstance(arg_value, list):
+                is_expanded = True
+                for item in arg_value:
+                    new_args = current_args.copy()
+                    new_args[arg_name] = item
+                    args_to_process.append(new_args)
+                break # Assume only one arg can be expanded per step
+        
+        if not is_expanded:
+            args_to_process.append(current_args)
+
+        step_output_collector = []
+        for single_args in args_to_process:
+            print(Fore.CYAN + f"Action: {step['tool']}({single_args})")
+
+            if step.get("is_critical"):
+                confirm = input(Fore.RED + "Confirm execution of this critical step? (yes/no): ").lower()
+                if confirm != 'yes':
+                    print(Fore.RED + "Step aborted by user.")
+                    plan_results.append({"tool": step['tool'], "status": "Aborted", "output": "User aborted critical step."})
+                    plan_halted = True
+                    break
+
+            spinner.start()
+            result = await execute_tool(step["tool"], single_args)
+            spinner.stop()
+
+            if result["status"] == "Error":
+                print(Fore.RED + f"Error in step {i+1}: {result['output']}")
+                plan_results.append({"tool": step['tool'], "status": "Error", "output": result['output']})
+                plan_halted = True
+                break
+            else:
+                step_output_collector.append(result['output'])
+        
+        if plan_halted:
+            continue
+
+        # Consolidate output for the next step
+        final_output = step_output_collector[0] if len(step_output_collector) == 1 else step_output_collector
+
+        step_outputs.append(final_output)
+        plan_results.append({"tool": step['tool'], "status": "Success", "output": final_output})
+        print(Fore.GREEN + f"Step {i+1} completed successfully.")
+
+        if "checkpoint" in step:
+            if not final_output or "error" in str(final_output).lower() or "not found" in str(final_output).lower():
+                print(Fore.YELLOW + f"Checkpoint failed for step {i+1}: {step['checkpoint']}. Halting plan.")
+                break
+    return plan_results
 
 async def main():
     print(Fore.YELLOW + "Autonomous Agent Started. Type '/voice' to toggle voice input. Type 'exit' to quit.")
@@ -87,18 +190,7 @@ async def main():
     voice_input_enabled = False  # Voice input is off by default
 
     while True:
-        user_input = ""
-        if voice_input_enabled:
-            print(Fore.CYAN + "\nListening for your command (voice enabled)...")
-            user_input = get_voice_input_whisper(duration=5)
-            if user_input:
-                print(f"> You said: {user_input}")
-            else:
-                print(Fore.YELLOW + "No voice input detected, please use text input.")
-                user_input = input("> ")
-        else:
-            print(Fore.CYAN + "\nPlease enter your command:")
-            user_input = input("> ")
+        user_input, voice_input_enabled = await get_user_input(voice_input_enabled)
 
         if not user_input:
             continue
@@ -129,124 +221,28 @@ async def main():
 
         elif "plan" in decision:
             plan = decision["plan"]
-            plan_results = []
+            plan_results = await execute_plan(plan, spinner, history)
+
             
-            print(Fore.YELLOW + "The AI has proposed a plan:")
-            for i, step in enumerate(plan, 1):
-                critical_tag = Fore.RED + "[CRITICAL]" if step.get("is_critical") else ""
-                print(Fore.YELLOW + f"  Step {i}: {step['thought']} ({step['tool']}) {critical_tag}")
 
-            approval = input("Execute this plan? (yes/no): ").lower()
-            if approval != 'yes':
-                print(Fore.RED + "Plan aborted by user.")
-                history.append("Agent: Plan aborted by user.")
-                continue
-
-            step_outputs = []
-            plan_halted = False
-            for i, step in enumerate(plan):
-                if plan_halted:
-                    break
-
-                print(Fore.CYAN + f"\n--- Executing Step {i+1}/{len(plan)} ---")
-                print(Fore.CYAN + f"Thought: {step['thought']}")
-
-                # --- Placeholder Substitution and Step Expansion Logic ---
-                import re
                 
-                current_args = json.loads(json.dumps(step['args'])) # Deep copy to avoid modifying the original plan
-                
-                # Find placeholders and substitute them
-                for arg_name, arg_value in list(current_args.items()):
-                    if isinstance(arg_value, str) and "<output_of_step_" in arg_value:
-                        match = re.search(r"<output_of_step_(\d+)>", arg_value)
-                        if match:
-                            step_num_to_get = int(match.group(1))
-                            if 0 < step_num_to_get <= len(step_outputs):
-                                prev_output = step_outputs[step_num_to_get - 1]
-                                
-                                # Handle list_directory output specifically
-                                if isinstance(prev_output, dict) and 'entries' in prev_output:
-                                    file_list = prev_output['entries']
-                                    # The placeholder might be part of a path, e.g., "photos/<output_of_step_1>"
-                                    base_path = os.path.dirname(arg_value.replace(match.group(0), ''))
-                                    full_paths = [os.path.join(base_path, f) for f in file_list]
-                                    current_args[arg_name] = full_paths
-                                elif isinstance(prev_output, list) and arg_name == "command": # For run_shell_command with multiple files
-                                    current_args[arg_name] = " ".join(prev_output)
-                                else:
-                                    # Generic placeholder replacement
-                                    current_args[arg_name] = arg_value.replace(match.group(0), str(prev_output))
+
+
 
                 # --- Tool Execution Logic (with expansion) ---
-                args_to_process = []
-                is_expanded = False
                 
-                # Check if any argument value is a list that requires expansion
-                for arg_name, arg_value in current_args.items():
-                    if isinstance(arg_value, list):
-                        is_expanded = True
-                        for item in arg_value:
-                            new_args = current_args.copy()
-                            new_args[arg_name] = item
-                            args_to_process.append(new_args)
-                        break # Assume only one arg can be expanded per step
                 
-                if not is_expanded:
-                    args_to_process.append(current_args)
-
-                step_output_collector = []
-                for single_args in args_to_process:
-                    print(Fore.CYAN + f"Action: {step['tool']}({single_args})")
-
-                    if step.get("is_critical"):
-                        confirm = input(Fore.RED + "Confirm execution of this critical step? (yes/no): ").lower()
-                        if confirm != 'yes':
-                            print(Fore.RED + "Step aborted by user.")
-                            plan_results.append({"tool": step['tool'], "status": "Aborted", "output": "User aborted critical step."})
-                            plan_halted = True
-                            break
-
-                    spinner.start()
-                    result = await execute_tool(step["tool"], single_args)
-                    spinner.stop()
-
-                    if result["status"] == "Error":
-                        print(Fore.RED + f"Error in step {i+1}: {result['output']}")
-                        plan_results.append({"tool": step['tool'], "status": "Error", "output": result['output']})
-                        plan_halted = True
-                        break
-                    else:
-                        step_output_collector.append(result['output'])
                 
-                if plan_halted:
-                    continue
 
-                # Consolidate output for the next step
-                final_output = step_output_collector[0] if len(step_output_collector) == 1 else step_output_collector
+                
 
-                # Apply output_filter if specified
-                if 'output_filter' in step:
-                    try:
-                        # Make the raw output available as 'output' for the filter expression
-                        output = final_output
-                        filtered_output = eval(step['output_filter'], {'output': output})
-                        final_output = filtered_output
-                        print(Fore.GREEN + f"Output filtered: {final_output}")
-                    except Exception as e:
-                        print(Fore.RED + f"Error applying output_filter for step {i+1}: {e}")
-                        plan_results.append({"tool": step['tool'], "status": "Error", "output": f"Output filter failed: {e}"})
-                        plan_halted = True
-                        continue
+                
 
-                step_outputs.append(final_output)
-                plan_results.append({"tool": step['tool'], "status": "Success", "output": final_output})
-                print(Fore.GREEN + f"Step {i+1} completed successfully.")
+                
 
-                if "checkpoint" in step:
-                    if not final_output or "error" in str(final_output).lower() or "not found" in str(final_output).lower():
-                        print(Fore.YELLOW + f"Checkpoint failed for step {i+1}: {step['checkpoint']}. Halting plan.")
-                        break
+                
+
+                
 
             spinner.start()
             final_summary = await summarize_plan_result(plan_results)
