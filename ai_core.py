@@ -21,7 +21,7 @@ async def create_plan(history: list, current_working_directory: str) -> dict:
 
     try:
         response = await client.chat.completions.create(
-            model="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
+            model="deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
@@ -49,12 +49,12 @@ async def summarize_plan_result(plan_results: list) -> str:
 
     try:
         response = await client.chat.completions.create(
-            model="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
+            model="deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant who summarizes plan execution results."},
                 {"role": "user", "content": summary_prompt}
             ],
-            max_tokens=200,
+            max_tokens=1000,
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
