@@ -54,6 +54,7 @@ def start_local_server_if_not_running():
 
 async def parse_boolean_response(text_response: str, boolean_question: str) -> Optional[bool]:
     """Uses an LLM to parse a text response into a boolean (True/False/None for ambiguous)."""
+    print(f"DEBUG: parse_boolean_response - text_response: {text_response}, boolean_question: {boolean_question}")
     try:
         response = await client.chat.completions.create(
             model=MODEL_NAME,
@@ -65,6 +66,7 @@ async def parse_boolean_response(text_response: str, boolean_question: str) -> O
             temperature=0.0
         )
         parsed_content = response.choices[0].message.content.strip().lower()
+        print(f"DEBUG: parse_boolean_response - parsed_content: {parsed_content}")
         if parsed_content == "true":
             return True
         elif parsed_content == "false":
@@ -77,6 +79,7 @@ async def parse_boolean_response(text_response: str, boolean_question: str) -> O
 
 async def is_boolean_question(question: str) -> bool:
     """Uses an LLM to determine if a question is a boolean (yes/no) type."""
+    print(f"DEBUG: is_boolean_question - question: {question}")
     try:
         response = await client.chat.completions.create(
             model=MODEL_NAME,
@@ -88,6 +91,7 @@ async def is_boolean_question(question: str) -> bool:
             temperature=0.0
         )
         parsed_content = response.choices[0].message.content.strip().lower()
+        print(f"DEBUG: is_boolean_question - parsed_content: {parsed_content}")
         return parsed_content == "true"
     except Exception as e:
         print(f"Error determining boolean question: {e}")
