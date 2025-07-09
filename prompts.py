@@ -60,7 +60,7 @@ Based on the user's latest request, create a JSON object that outlines the plan.
             {
                 "thought": "Now I will classify each image found in the previous step to see if it contains a dog. I will then filter the results to get only the paths of the dog images.",
                 "tool": "classify_image",
-                "args": {"image_path": "photos/<output_of_step_1>['result']", "question": "Is there a dog in this image?"},
+                "args": {"image_path": "<output_of_step_1>['result']", "question": "Is there a dog in this image?"},
                 "is_critical": False
             },
             {
