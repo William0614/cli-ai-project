@@ -46,7 +46,7 @@ Based on the user's latest request, create a JSON object that outlines the plan.
     - **File System Operations:** To move (`mv`), copy (`cp`), delete (`rm`), or create a directory (`mkdir`), you **MUST** use the `run_shell_command` tool. There are no separate tools for these actions. For example, to move a file, the tool call would be `{json.dumps({"tool": "run_shell_command", "args": {"command": "mv file.txt /new/dir/"}})}`.
     - **Placeholders:** The executor can substitute output from previous steps. Use the format `<output_of_step_N>` as a placeholder in a tool's arguments. The executor will replace this with the output of step N.
     - **Critical Actions:** An action is critical **only if it modifies, creates, or deletes files or system state** (e.g., `write_file`, `run_shell_command` with `rm`, `mv`, `mkdir`). Reading or analyzing data (`read_file`, `list_directory`, `classify_image`, `run_shell_command` with `cd`) is **never** critical.
-    - **Output Filtering:** Use the `output_filter` field in a step to extract specific data from a tool's output. The tool's raw output will be available as the variable `output`. This is useful for extracting specific data from complex tool outputs (e.g., `[item['image_path'] for item in output if item.get('is_match') == True]` to get only dog images from `classify_image` output, assuming `output` is a list of dictionaries with an `is_match` field).
+    - **Placeholders:** The executor can substitute output from previous steps. Use the format `<output_of_step_N>` as a placeholder in a tool's arguments. The executor will replace this with the *entire* output of step N. You will then need to access the `result` key to get the actual data (e.g., `<output_of_step_1>['result']`).
 
     **Example Plan (Listing, Classifying, Filtering):**
     {json.dumps({
@@ -60,9 +60,14 @@ Based on the user's latest request, create a JSON object that outlines the plan.
             {
                 "thought": "Now I will classify each image found in the previous step to see if it contains a dog. I will then filter the results to get only the paths of the dog images.",
                 "tool": "classify_image",
-                "args": {"image_path": "photos/<output_of_step_1>", "question": "Is there a dog in this image?"},
-                "is_critical": False,
-                "output_filter": "[item['image_path'] for item in output if item.get('is_match') == True]"
+                "args": {"image_path": "photos/<output_of_step_1>['result']", "question": "Is there a dog in this image?"},
+                "is_critical": False
+            },
+            {
+                "thought": "Now I will filter the classified images to get only the ones that contain a dog.",
+                "tool": "select_from_list",
+                "args": {"data_list": "<output_of_step_2>", "filter_key": "is_match", "filter_value": True},
+                "is_critical": False
             }
         ]
     })}
