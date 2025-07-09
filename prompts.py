@@ -29,7 +29,9 @@ Your primary role is to analyze a user's request and create a comprehensive, ste
 Based on the user's latest request, create a JSON object that outlines the plan. You have three choices for the top-level key in the JSON response:
 
 1.  **"text"**: If the user's request is a simple question, a greeting, or can be answered directly without tools, use this key. The value should be the response string.
-    *   **Crucially, when asked about personal information (e.g., your preferences, age, name), you MUST ONLY use information present in the "Recalled Memories" section. If the information is not there, state that you don't know or don't have that information. If a recalled memory implies the answer to a question (e.g., if you know the user is a 'girl', then they are not a 'boy'), you should infer the answer.**
+    *   **Crucially, when asked about personal information (e.g., your preferences, age, name), you MUST ONLY use information present in the "Recalled Memories" section. If the information is not there, state that you don't know or don't have that information.**
+    *   **If a direct answer to the user prompt is not in "Recalled Memories", but it can be inferred from it, then do so. However, if you are not certain, state that it is an assumption for clarity.**
+    *   **AVOID STEREOTYPE and DO NOT be BIASED.**
     Example: {json.dumps({"text": "Hello! How can I help you today?"})}
 
 2.  **"save_to_memory"**: If the user provides a new piece of information that should be remembered, use this key. The value should be the string of information to save.
@@ -41,8 +43,8 @@ Based on the user's latest request, create a JSON object that outlines the plan.
     - **Tool Usage:** You **MUST ONLY** use the tools defined in the schema below. **DO NOT** invent or hallucinate any tool names. If you cannot achieve the goal with the available tools, you must respond with a text message explaining the limitation.
     - **File System Operations:** To move (`mv`), copy (`cp`), delete (`rm`), or create a directory (`mkdir`), you **MUST** use the `run_shell_command` tool. There are no separate tools for these actions. For example, to move a file, the tool call would be `{json.dumps({"tool": "run_shell_command", "args": {"command": "mv file.txt /new/dir/"}})}`.
     - **Placeholders:** The executor can substitute output from previous steps. Use the format `<output_of_step_N>` as a placeholder in a tool's arguments. The executor will replace this with the output of step N.
-    - **Critical Actions:** An action is critical **only if it modifies, creates, or deletes files or system state** (e.g., `write_file`, `run_shell_command` with `rm`, `mv`, `mkdir`). Reading or analyzing data (`read_file`, `list_directory`, `classify_image`) is **never** critical.
-    - **Output Filtering:** Use the `output_filter` field in a step to extract specific data from a tool's output. The tool's raw output will be available as the variable `output`. This is useful for extracting specific data from complex tool outputs (e.g., `[item['image_path'] for item in output if 'dog' in item['response'].lower()]` to get only dog images from `classify_image` output, assuming `output` is a list of dictionaries).
+    - **Critical Actions:** An action is critical **only if it modifies, creates, or deletes files or system state** (e.g., `write_file`, `run_shell_command` with `rm`, `mv`, `mkdir`). Reading or analyzing data (`read_file`, `list_directory`, `classify_image`, `run_shell_command` with `cd`) is **never** critical.
+    - **Output Filtering:** Use the `output_filter` field in a step to extract specific data from a tool's output. The tool's raw output will be available as the variable `output`. This is useful for extracting specific data from complex tool outputs (e.g., `[item['image_path'] for item in output if item.get('is_match') == True]` to get only dog images from `classify_image` output, assuming `output` is a list of dictionaries with an `is_match` field).
 
     **Example Plan:**
     {json.dumps({
@@ -58,7 +60,7 @@ Based on the user's latest request, create a JSON object that outlines the plan.
                 "tool": "classify_image",
                 "args": {"image_path": "photos/<output_of_step_1>", "question": "Is there a dog in this image?"},
                 "is_critical": False,
-                "output_filter": "[item['image_path'] for item in output if 'dog' in item['response'].lower()]"
+                "output_filter": "[item['image_path'] for item in output if item.get('is_match') == True]"
             },
             {
                 "thought": "Finally, I will create the 'dogs' directory if it doesn't exist and move all the identified dog images into it.",
@@ -77,24 +79,20 @@ Now, analyze the user's request and generate the appropriate JSON response.
 
 def get_final_summary_prompt(plan_results: list) -> str:
     """
-    Generates a prompt for the LLM to summarize the results of an executed plan.
+    Generates a prompt for the LLM to respond to user prompt using the results of an executed plan.
     """
     results_str = "\n".join([f"Step {i+1} ({r['tool']}): {r['status']}\nOutput: {r['output']}" for i, r in enumerate(plan_results)])
 
     return f"""
 You are a helpful assistant. A plan was just executed with the following results.
-Your task is to provide a concise, user-friendly summary of the outcome.
+Your task is to provide an ultimate response to the user prompt using the result of the plan execution.
 
 **Execution Results:**
 {results_str}
-
-Based on these results, what is the final outcome?
-If all steps succeeded, confirm the successful completion of the task.
-If any step failed, explain what went wrong and what the final state of the system is.
 """
 
 def get_final_summary_system_prompt():
     """
     Returns a system prompt specifically for generating a final summary of a plan's execution.
     """
-    return "You are a helpful assistant. Summarize the provided plan execution results in a concise, user-friendly text format. Focus on the overall outcome and any important details or errors. If no plan was executed, provide a general, helpful response based on the conversation."
+    return "You are a helpful assistant. Summarize the plan execution results in a CONCISE text format. STICK to no more than 3 sentences. Focus on the overall outcome and any important details or errors. If no plan was executed, provide a response based on the conversation."
