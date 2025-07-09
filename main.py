@@ -172,6 +172,8 @@ async def main():
                                     base_path = os.path.dirname(arg_value.replace(match.group(0), ''))
                                     full_paths = [os.path.join(base_path, f) for f in file_list]
                                     current_args[arg_name] = full_paths
+                                elif isinstance(prev_output, list) and arg_name == "command": # For run_shell_command with multiple files
+                                    current_args[arg_name] = " ".join(prev_output)
                                 else:
                                     # Generic placeholder replacement
                                     current_args[arg_name] = arg_value.replace(match.group(0), str(prev_output))
