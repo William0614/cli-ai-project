@@ -78,7 +78,7 @@ async def classify_image(image_path: str, question: str) -> dict:
     except ValueError:
         return {"error": f"Image path {image_path} is not relative to the current working directory. Cannot serve."}
 
-    image_url = f"http://localhost:{LOCAL_SERVER_PORT}/{relative_image_path}"
+    image_url = f"http://172.17.0.1:{LOCAL_SERVER_PORT}/cli-ai-project/{relative_image_path}"
 
     payload = {
         "model": MODEL_NAME,

@@ -2,7 +2,7 @@
 import asyncio
 import aiofiles
 import os
-from typing import Optional
+from typing import Any, Optional
 from image_tools import classify_image
 
 # --- 1. ASYNC TOOL IMPLEMENTATIONS ---
@@ -53,6 +53,8 @@ async def read_file(file_path: str, offset: Optional[int] = None, limit: Optiona
 
 async def write_file(file_path: str, content: str) -> dict:
     """Writes to a file asynchronously and returns a success status."""
+    if not isinstance(content, str):
+        content = content['stdout']
     try:
         async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
             await f.write(content)
@@ -70,6 +72,8 @@ def list_directory(path: str = '.') -> dict:
 
 def select_from_list(data_list: list, index: Optional[int] = None, filter_key: Optional[str] = None, filter_value: Any = None) -> dict:
     """Selects an item from a list by index or filters a list of dictionaries by key-value pair."""
+    if not isinstance(data_list, list):
+        data_list = [data_list]
     try:
         if not isinstance(data_list, list):
             return {"error": "Input 'data_list' must be a list."}

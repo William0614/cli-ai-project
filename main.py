@@ -108,7 +108,7 @@ def substitute_placeholders(args: dict, step_outputs: list) -> dict:
                 step_num_to_get = int(step_num_str)
                 if 0 < step_num_to_get <= len(step_outputs):
                     prev_output = step_outputs[step_num_to_get - 1]
-
+                    print(f"Prev_output: {prev_output}")
                     # Construct the Python expression to evaluate
                     # Replace the placeholder part with "prev_output"
                     python_expression = full_placeholder_str.replace(
@@ -119,11 +119,16 @@ def substitute_placeholders(args: dict, step_outputs: list) -> dict:
                         evaluated_value = eval(
                             python_expression, {"prev_output": prev_output}
                         )
+                        print(f"evaluated_value: {evaluated_value}")
                         # Replace the original placeholder string with the evaluated value
                         # This handles cases like "photos/<output_of_step_1>['result']"
-                        current_args[arg_name] = arg_value.replace(
-                            full_placeholder_str, str(evaluated_value)
-                        )
+                        print(f"full_placeholder_str: {full_placeholder_str}")
+                        if full_placeholder_str == arg_value:
+                            current_args[arg_name] = evaluated_value
+                        else:
+                            current_args[arg_name] = arg_value.replace(
+                                full_placeholder_str, str(evaluated_value)
+                            )
                     except Exception as e:
                         print(
                             f"Warning: Could not evaluate placeholder expression '{python_expression}': {e}"
