@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import shlex
 import threading
 import itertools
 import json
@@ -54,6 +55,8 @@ async def execute_tool(tool_name: str, tool_args: dict) -> dict:
         command = tool_args.get("command", "")
         if command.strip().startswith("cd "):
             new_path = command.strip()[3:].strip()
+            parsed_path = shlex.split(new_path)
+            new_path = parsed_path[0]
             if os.path.isabs(new_path):
                 target_path = new_path
             else:
@@ -171,8 +174,8 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
             + f"  Step {i}: {step['thought']} ({step['tool']}) {critical_tag}"
         )
 
-    approval = input("Execute this plan? (yes/no): ").lower()
-    if approval != "yes":
+    approval = input("Execute this plan? (Enter/no): ").lower()
+    if not (approval == "" or approval == "yes"):
         print(Fore.RED + "Plan aborted by user.")
         history.append("Agent: Plan aborted by user.")
         return plan_results  # Return empty results if aborted
@@ -209,9 +212,9 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
 
             if step.get("is_critical"):
                 confirm = input(
-                    Fore.RED + "Confirm execution of this critical step? (yes/no): "
+                    Fore.RED + "Confirm execution of this critical step? (Enter/no): "
                 ).lower()
-                if confirm != "yes":
+                if not (confirm == "" or confirm == "yes"):
                     print(Fore.RED + "Step aborted by user.")
                     plan_results.append(
                         {

@@ -43,7 +43,8 @@ Based on the user's latest request, create a JSON object that outlines the plan.
 
     **PLANNING RULES:**
     - **Tool Usage:** You **MUST ONLY** use the tools defined in the schema below. **DO NOT** invent or hallucinate any tool names. If you cannot achieve the goal with the available tools, you must respond with a text message explaining the limitation.
-    - **File System Operations:** To move (`mv`), copy (`cp`), delete (`rm`), or create a directory (`mkdir`), you **MUST** use the `run_shell_command` tool. There are no separate tools for these actions. For example, to move a file, the tool call would be `{json.dumps({"tool": "run_shell_command", "args": {"command": "mv file.txt /new/dir/"}})}`.
+    - **File System Operations:** To move (`mv`), copy (`cp`), delete (`rm`), or create a directory (`mkdir`), you **MUST** use the `run_shell_command` tool. There are no separate tools for these actions.
+    - **Quoting Paths:** When using `run_shell_command`, you **MUST** enclose all file and directory paths in double quotes (e.g., `cd "My Documents"`, `mv "file.txt"../new dir/"`).
     - **Placeholders:** The executor can substitute output from previous steps. Use the format `<output_of_step_N>` as a placeholder in a tool's arguments. The executor will replace this with the output of step N.
     - **Critical Actions:** An action is critical **only if it modifies, creates, or deletes files or system state** (e.g., `write_file`, `run_shell_command` with `rm`, `mv`, `mkdir`). Reading or analyzing data (`read_file`, `list_directory`, `classify_image`, `run_shell_command` with `cd`) is **never** critical.
     - **Placeholders:** The executor can substitute output from previous steps. Use the format `<output_of_step_N>` as a placeholder in a tool's arguments. The executor will replace this with the *entire* output of step N. You will then need to access the `result` key to get the actual data (e.g., `<output_of_step_1>['result']`).
