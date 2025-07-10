@@ -13,9 +13,9 @@ API_URL = "http://localhost:8002/v1/chat/completions"
 MODEL_NAME = "Qwen/Qwen2.5-VL-3B-Instruct"
 LOCAL_SERVER_PORT = 8887
 
-async def image_to_text_function(query: str) -> dict:
+async def image_to_text_function(query: str,image_path: str) -> dict:
 
-    image_url = f"http://172.17.0.1:{LOCAL_SERVER_PORT}/cli-ai-project/screenshot.png"
+    image_url = f"http://172.17.0.1:{LOCAL_SERVER_PORT}/cli-ai-project/{image_path}"
 
     payload = {
         "model": MODEL_NAME,

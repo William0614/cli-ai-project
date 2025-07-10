@@ -80,11 +80,18 @@ async def list_directory(path: str = '.') -> dict:
     except Exception as e:
         return {"error": str(e)}
 
+async def image_information(query: str, file_path) -> dict:
+    try:
+        answer = await image_to_text_function(query,file_path)
+        return answer
+    except Exception as e:
+        return {"error": f"An unexpected error occurred: {e}"}
+
 async def tell_weather(query: str) -> dict:
 
-    real_query = query + ' ' + "bbc weather"
+    real_query = query + ' ' + "accuweather"
     await search_and_screenshot(real_query)
-    answer = await image_to_text_function(real_query+". Tell the weather taking into consideration that the current date is " +  get_current_date_and_time())
+    answer = await image_to_text_function(real_query+". Tell the weather taking into consideration that the current date is " +  get_current_date_and_time(), "screenshot.png")
     try:
         result = answer["response"]
         return {"response": result}
@@ -98,7 +105,8 @@ available_tools = {
     "read_file": read_file,
     "write_file": write_file,
     "list_directory": list_directory,
-    "classify_folder": classify_folder,
+    #"classify_folder": classify_folder,
+    "image_information": image_information,
     "tell_weather": tell_weather
 }
 
@@ -127,9 +135,7 @@ tools_schema = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "file_path": {"type": "string", "description": "The absolute path to the file."},
-                    "offset": {"type": "integer", "description": "The 0-based line number to start reading from."},
-                    "limit": {"type": "integer", "description": "The maximum number of lines to read."}
+                    "file_path": {"type": "string", "description": "The absolute path to the file."}
                 },
                 "required": ["file_path"]
             }
@@ -154,7 +160,7 @@ tools_schema = [
         "type": "function",
         "function": {
             "name": "list_directory",
-            "description": "Lists files and directories in a path.",
+            "description": "Lists ALL files and directories in a path.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -164,18 +170,33 @@ tools_schema = [
             }
         }
     },
+    #{
+    #    "type": "function",
+    #    "function": {
+    #        "name": "classify_folder",
+    #        "description": "Lists all the photos inside a folder that have a property that is determined by user's prompt.",
+    #        "parameters": {
+    #            "type": "object",
+    #            "properties": {
+    #                "folder_path": {"type": "string", "description": "The RELATIVE path of the folder."},
+    #                "property": {"type": "string", "description": "The property of the desired images, e.g., 'Dogs', 'Human smiling'."}
+    #            },
+    #            "required": ["folder_path", "property"]
+    #        }
+    #    }
+    #},
     {
         "type": "function",
         "function": {
-            "name": "classify_folder",
-            "description": "Lists all the photos inside a folder that have a property that is determined by user's prompt.",
+            "name": "image_information",
+            "description": "Answers the query about the image and gain information",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "folder_path": {"type": "string", "description": "The RELATIVE path to the folder."},
-                    "property": {"type": "string", "description": "The property of the desired images, e.g., 'Dogs', 'Human smiling'."}
+                    "query": {"type": "string", "description": "A clear and concise question about the image"},
+                    "file_path": {"type": "string", "description": "The RELATIVE path of the image."}
                 },
-                "required": ["folder_path", "property"]
+                "required": ["query","file_path"]
             }
         }
     },

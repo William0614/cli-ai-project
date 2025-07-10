@@ -140,7 +140,6 @@ def get_summarizer_system_prompt():
 
 def get_tool_summary_prompt(tool_name: str, tool_args: dict, tool_output: dict) -> str:
     prompt = f"""
-A tool has just been executed. Please generate a brief, user-friendly sentence explaining the outcome.
 
 Tool Name: {tool_name}
 Arguments Used: {json.dumps(tool_args)}
@@ -161,8 +160,9 @@ Result: {json.dumps(tool_output)}
 """
     elif tool_name == "list_directory":
         entries = tool_output.get('entries', [])
+        #print(entries)
         prompt = f"""
-The `list_directory` tool was just used. List the contents of the directory for the user.
+The `list_directory` tool was just used. List ALL the contents of the directory for the user. DO NOT SKIP ANY FOLDER/FILE IN THIS DIRECTORY.
 
 Path: {tool_args.get('path')}
 Entries: {', '.join(entries) if entries else 'None'}
@@ -193,4 +193,4 @@ def get_final_summary_system_prompt():
     """
     Returns a system prompt specifically for generating a final summary of a plan's execution.
     """
-    return "You are a helpful assistant. Summarize the provided plan execution results in a concise, user-friendly text format. Focus on the overall outcome and any important details or errors. If no plan was executed, provide a general, helpful response based on the conversation. If the plan is read_file DO NOT summarise the contentsd of the file I want you to output the contents of the file as is."
+    return "You are a helpful assistant. Summarize the provided plan execution results in a concise, user-friendly text format. Focus on the overall outcome and any important details or errors. If no plan was executed, provide a general, helpful response based on the conversation. If the plan is read_file DO NOT summarise the contentsd of the file I want you to output the contents of the file as is. If the plan is list_directory include ALL directories do NOT summarise."

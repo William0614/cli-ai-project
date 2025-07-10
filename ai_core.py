@@ -35,7 +35,7 @@ async def get_agent_decision(
     """
     # 1. Recall long-term memories relevant to the main goal
     recalled_memories = memory.recall_memories(initial_user_prompt)
-
+    recalled_memories = ""
     # 2. Get the system prompt (this needs to be updated in prompts.py)
     # It now contains the core instructions for the reasoning loop.
     system_prompt = get_agent_system_prompt(current_working_directory,conversation_history, initial_user_prompt, task_scratchpad, recalled_memories)
