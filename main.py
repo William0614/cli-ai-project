@@ -3,13 +3,13 @@ import os
 import json
 from ai_core import create_plan, gather_context
 from executor import Executor
-from speech_to_text import SpeechToText
+from speech_to_text import get_voice_input_whisper
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Initialize SpeechToText (if needed)
-stt = SpeechToText() if os.getenv("USE_SPEECH_RECOGNITION") == "True" else None
+# Initialize speech recognition function (if needed)
+stt_enabled = os.getenv("USE_SPEECH_RECOGNITION") == "True"
 
 # Simple user confirmation function for critical actions
 def user_confirm(message: str) -> bool:
@@ -28,9 +28,9 @@ async def main():
         if user_input.lower() == 'exit':
             break
 
-        if stt:
+        if stt_enabled:
             print("Listening...")
-            user_input = stt.recognize_speech()
+            user_input = stt_enabled.recognize_speech()
             print(f"You (Speech): {user_input}")
             if user_input.lower() == 'exit':
                 break
@@ -49,14 +49,14 @@ async def main():
         decision = await create_plan(history, current_working_directory, gathered_context)
 
         if "text" in decision:
-            print(f"AI: {decision["text"]}")
+            print(f"AI: {decision['text']}")
         elif "save_to_memory" in decision:
-            print(f"AI: I've noted that: {decision["save_to_memory"]}")
+            print(f"AI: I've noted that: {decision['save_to_memory']}")
         elif "plan" in decision:
             plan = decision["plan"]
             print("AI: I have formulated a plan:")
             for i, step in enumerate(plan):
-                print(f"  Step {i+1}: {step.get("thought", "No thought provided.")} (Tool: {step.get("tool")})")
+                print(f"  Step {i+1}: {step.get('thought', 'No thought provided.')} (Tool: {step.get('tool')})")
             
             # Step 4: Execute
             print("\n--- Step 4: Executing Plan ---")
