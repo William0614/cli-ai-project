@@ -106,9 +106,11 @@ def substitute_placeholders(args: dict, step_outputs: list) -> dict:
             matches = re.findall(
                 r"(<output_of_step_(\d+)>(\[.*?\]|\\.[\\w_]+)*)", arg_value
             )
-
+            print(f"matches: {matches}")
             for full_placeholder_str, step_num_str, _ in matches:
                 step_num_to_get = int(step_num_str)
+                print(step_num_to_get)
+                print(f"step_outputs: {step_outputs}")
                 if 0 < step_num_to_get <= len(step_outputs):
                     prev_output = step_outputs[step_num_to_get - 1]
                     print(f"Prev_output: {prev_output}")
@@ -126,6 +128,8 @@ def substitute_placeholders(args: dict, step_outputs: list) -> dict:
                         # Replace the original placeholder string with the evaluated value
                         # This handles cases like "photos/<output_of_step_1>['result']"
                         print(f"full_placeholder_str: {full_placeholder_str}")
+                        if isinstance(evaluated_value, dict):
+                            evaluated_value = evaluated_value['result']
                         if full_placeholder_str == arg_value:
                             current_args[arg_name] = evaluated_value
                         else:
@@ -286,7 +290,6 @@ async def main():
 
     while True:
         user_input, voice_input_enabled = await get_user_input(voice_input_enabled)
-
         if not user_input:
             continue
         if user_input.lower() == "exit":
