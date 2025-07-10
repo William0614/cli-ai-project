@@ -8,8 +8,19 @@ import aiofiles
 import os
 from image_tools import classify_folder
 from pathlib import Path
+from web_search import search_and_screenshot
+from image_to_text import image_to_text_function
+import time
 
 # --- 1. ASYNC TOOL IMPLEMENTATIONS ---
+
+from datetime import datetime
+
+def get_current_date_and_time():
+    now = datetime.now()
+    current_date = now.strftime("%Y-%m-%d")
+    
+    return current_date
 
 def relative_path() -> str:
     from main import current_working_directory
@@ -39,23 +50,12 @@ async def run_shell_command(command: str, directory: Optional[str] = None) -> di
     except Exception as e:
         return {"error": str(e)}
 
-async def read_file(file_path: str, offset: Optional[int] = None, limit: Optional[int] = None) -> dict:
+async def read_file(file_path: str) -> dict:
     """Reads a file asynchronously and returns its content, with optional line-based slicing."""
-    if offset is not None and offset < 0:
-        return {"error": "Offset must be a non-negative number."}
-    if limit is not None and limit <= 0:
-        return {"error": "Limit must be a positive number."}
-    if offset is not None and limit is None:
-        return {"error": "Limit must be provided when offset is used."}
-
+    file_path_upd = Path.cwd() / relative_path() / file_path
+    print(file_path_upd)
     try:
-        async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-            if offset is not None and limit is not None:
-                lines = await f.readlines()
-                sliced_lines = lines[offset : offset + limit]
-                content = "".join(sliced_lines)
-                return {"content": content, "lines_read": len(sliced_lines)}
-            else:
+        async with aiofiles.open(file_path_upd, 'r', encoding='utf-8') as f:
                 content = await f.read()
                 return {"content": content}
     except FileNotFoundError:
@@ -72,13 +72,25 @@ async def write_file(file_path: str, content: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-def list_directory(path: str = '.') -> dict:
+async def list_directory(path: str = '.') -> dict:
     """Lists a directory and returns its contents as a list."""
     try:
         entries = os.listdir(relative_path()+'/'+ path)
         return {"entries": entries}
     except Exception as e:
         return {"error": str(e)}
+
+async def tell_weather(query: str) -> dict:
+
+    real_query = query + ' ' + "bbc weather"
+    await search_and_screenshot(real_query)
+    answer = await image_to_text_function(real_query+". Tell the weather taking into consideration that the current date is " +  get_current_date_and_time())
+    try:
+        result = answer["response"]
+        return {"response": result}
+    except Exception as e:
+        return {"error": f"An unexpected error occurred: {e}"}
+
 
 # --- 2. TOOL REGISTRY ---
 available_tools = {
@@ -87,6 +99,7 @@ available_tools = {
     "write_file": write_file,
     "list_directory": list_directory,
     "classify_folder": classify_folder,
+    "tell_weather": tell_weather
 }
 
 # --- 3. TOOL SCHEMA ---
@@ -166,5 +179,19 @@ tools_schema = [
             }
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "tell_weather",
+            "description": "Tells the weather in specific time and place",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The place and time the user wants to know the weather in one string"}
+                },
+                "required": ["query"]
+            }
+        }
+    }
 ]
 

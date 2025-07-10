@@ -90,11 +90,8 @@ async def execute_tool_call(tool_call: dict) -> str:
         # but we can keep one here for when confirmation is disabled.
         print(Fore.CYAN + f"Executing: {tool_name}({tool_args})")
         
-        if inspect.iscoroutinefunction(tool_function):
-            raw_output = await tool_function(**tool_args)
-        else:
-            raw_output = tool_function(**tool_args)
-        
+   
+        raw_output = await tool_function(**tool_args)
         summary = await summarize_tool_result(tool_name, tool_args, raw_output)
         print(Fore.GREEN + summary)
         return summary
@@ -110,7 +107,7 @@ async def main():
     max_steps_per_task = 10 
 
     while True:
-        print(f"Current Directory: {current_working_directory}")
+  
         initial_user_prompt = input(f"\n{Fore.GREEN}> ")
         if not initial_user_prompt:
             continue
@@ -127,9 +124,6 @@ async def main():
 
         while task_in_progress and step_counter < max_steps_per_task:
 
-            print('--------------')
-            print(task_scratchpad)
-            print('--------------')
             step_counter += 1
             spinner.start()
             decision = await get_agent_decision(

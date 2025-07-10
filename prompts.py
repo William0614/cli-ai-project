@@ -115,7 +115,7 @@ Use run_shell_command only when no other specific tool can accomplish your goal.
     Moving or renaming files: mv old_name.py new_name.py
 
 To read a file's content:
-    CORRECT: Use the read_file tool. It's designed for this exact purpose.
+    CORRECT: Use the read_file tool. It's designed for this exact purpose. If the file content is short, you MUST include it. If it's long, you might just confirm it was read.
     INCORRECT: Do not use run_shell_command with cat or type.
 To write or modify a file:
     CORRECT: Use the write_file tool. It handles content creation and overwriting safely.
@@ -148,7 +148,7 @@ Raw Output: {json.dumps(tool_output)}
 """
     if tool_name == "read_file":
         prompt = f"""
-The `read_file` tool was just used. Based on the following content, write a brief confirmation that the file was read successfully. If the file content is short, you can include it. If it's long, just confirm it was read.
+The `read_file` tool was just used. If the file content is short, you MUST include it. If it's long, you might just confirm it was read.
 
 File Path: {tool_args.get('file_path')}
 File Content Snippet: \"{tool_output.get('content', '')[:100]}...\""""
@@ -193,4 +193,4 @@ def get_final_summary_system_prompt():
     """
     Returns a system prompt specifically for generating a final summary of a plan's execution.
     """
-    return "You are a helpful assistant. Summarize the provided plan execution results in a concise, user-friendly text format. Focus on the overall outcome and any important details or errors. If no plan was executed, provide a general, helpful response based on the conversation."
+    return "You are a helpful assistant. Summarize the provided plan execution results in a concise, user-friendly text format. Focus on the overall outcome and any important details or errors. If no plan was executed, provide a general, helpful response based on the conversation. If the plan is read_file DO NOT summarise the contentsd of the file I want you to output the contents of the file as is."
