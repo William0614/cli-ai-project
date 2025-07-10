@@ -106,14 +106,14 @@ def substitute_placeholders(args: dict, step_outputs: list) -> dict:
             matches = re.findall(
                 r"(<output_of_step_(\d+)>(\[.*?\]|\\.[\\w_]+)*)", arg_value
             )
-            print(f"matches: {matches}")
+            # print(f"matches: {matches}")
             for full_placeholder_str, step_num_str, _ in matches:
                 step_num_to_get = int(step_num_str)
-                print(step_num_to_get)
-                print(f"step_outputs: {step_outputs}")
+                # print(step_num_to_get)
+                # print(f"step_outputs: {step_outputs}")
                 if 0 < step_num_to_get <= len(step_outputs):
                     prev_output = step_outputs[step_num_to_get - 1]
-                    print(f"Prev_output: {prev_output}")
+                    # print(f"Prev_output: {prev_output}")
                     # Construct the Python expression to evaluate
                     # Replace the placeholder part with "prev_output"
                     python_expression = full_placeholder_str.replace(
@@ -124,10 +124,10 @@ def substitute_placeholders(args: dict, step_outputs: list) -> dict:
                         evaluated_value = eval(
                             python_expression, {"prev_output": prev_output}
                         )
-                        print(f"evaluated_value: {evaluated_value}")
+                        # print(f"evaluated_value: {evaluated_value}")
                         # Replace the original placeholder string with the evaluated value
                         # This handles cases like "photos/<output_of_step_1>['result']"
-                        print(f"full_placeholder_str: {full_placeholder_str}")
+                        # print(f"full_placeholder_str: {full_placeholder_str}")
                         if isinstance(evaluated_value, dict) and 'result' in evaluated_value:
                             evaluated_value = evaluated_value['result']
                         
