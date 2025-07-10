@@ -128,13 +128,23 @@ def substitute_placeholders(args: dict, step_outputs: list) -> dict:
                         # Replace the original placeholder string with the evaluated value
                         # This handles cases like "photos/<output_of_step_1>['result']"
                         print(f"full_placeholder_str: {full_placeholder_str}")
-                        if isinstance(evaluated_value, dict):
+                        if isinstance(evaluated_value, dict) and 'result' in evaluated_value:
                             evaluated_value = evaluated_value['result']
+                        
+                        # If the placeholder is the entire string, replace it directly
+                        # to preserve the type (e.g., list)
                         if full_placeholder_str == arg_value:
                             current_args[arg_name] = evaluated_value
                         else:
+                            # Otherwise, handle string formatting for commands
+                            if isinstance(evaluated_value, list):
+                                # Join list items into a space-separated string for shell commands
+                                replacement_str = ' '.join(f'"{item}"' for item in evaluated_value)
+                            else:
+                                replacement_str = str(evaluated_value)
+                            
                             current_args[arg_name] = arg_value.replace(
-                                full_placeholder_str, str(evaluated_value)
+                                full_placeholder_str, replacement_str
                             )
                     except Exception as e:
                         print(
@@ -197,16 +207,33 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
         args_to_process = []
         is_expanded = False
 
-        # Only expand the list for the 'classify_image' tool
-        if step['tool'] == 'classify_image' and 'image_path' in current_args:
-            for arg_name, arg_value in current_args.items():
-                if isinstance(arg_value, list):
-                    is_expanded = True
-                    for item in arg_value:
-                        new_args = current_args.copy()
-                        new_args[arg_name] = item
-                        args_to_process.append(new_args)
-                    break  # Assume only one arg can be expanded per step
+        # Expand list arguments for shell commands to run them one by one
+        if step['tool'] == 'run_shell_command' and 'command' in current_args:
+            command_parts = current_args['command'].split()
+            list_args = []
+            for i, part in enumerate(command_parts):
+                if isinstance(part, list):
+                    list_args.append((i, part))
+            
+            if len(list_args) > 0:
+                is_expanded = True
+                # Currently handles one list argument per command
+                arg_index, arg_list = list_args[0]
+                for item in arg_list:
+                    new_command_parts = command_parts.copy()
+                    new_command_parts[arg_index] = item
+                    new_args = current_args.copy()
+                    new_args['command'] = " ".join(new_command_parts)
+                    args_to_process.append(new_args)
+
+        # Fallback for classify_image
+        elif step['tool'] == 'classify_image' and 'image_path' in current_args:
+            if isinstance(current_args['image_path'], list):
+                is_expanded = True
+                for item in current_args['image_path']:
+                    new_args = current_args.copy()
+                    new_args['image_path'] = item
+                    args_to_process.append(new_args)
 
         if not is_expanded:
             args_to_process.append(current_args)
