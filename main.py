@@ -189,19 +189,20 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
 
         current_args = substitute_placeholders(step["args"], step_outputs)
 
-        # --- Tool Execution Logic (with expansion) ---
+        # --- Tool Execution Logic (with expansion for specific tools) ---
         args_to_process = []
         is_expanded = False
 
-        # Check if any argument value is a list that requires expansion
-        for arg_name, arg_value in current_args.items():
-            if isinstance(arg_value, list):
-                is_expanded = True
-                for item in arg_value:
-                    new_args = current_args.copy()
-                    new_args[arg_name] = item
-                    args_to_process.append(new_args)
-                break  # Assume only one arg can be expanded per step
+        # Only expand the list for the 'classify_image' tool
+        if step['tool'] == 'classify_image' and 'image_path' in current_args:
+            for arg_name, arg_value in current_args.items():
+                if isinstance(arg_value, list):
+                    is_expanded = True
+                    for item in arg_value:
+                        new_args = current_args.copy()
+                        new_args[arg_name] = item
+                        args_to_process.append(new_args)
+                    break  # Assume only one arg can be expanded per step
 
         if not is_expanded:
             args_to_process.append(current_args)
