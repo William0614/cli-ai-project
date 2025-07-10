@@ -70,8 +70,16 @@ def list_directory(path: str = '.') -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-def select_from_list(data_list: list, index: Optional[int] = None, filter_key: Optional[str] = None, filter_value: Any = None) -> dict:
-    """Selects an item from a list by index or filters a list of dictionaries by key-value pair."""
+def select_from_list(data_list: list, index: Optional[int] = None, filter_key: Optional[str] = None, filter_value: Any = None, return_key: Optional[str] = None) -> dict:
+    """Selects an item from a list by index or filters a list of dictionaries by key-value pair.
+
+    Args:
+        data_list (list): The list to select from or filter.
+        index (Optional[int]): The 0-based index of the item to select.
+        filter_key (Optional[str]): The key to filter dictionaries by.
+        filter_value (Any): The value to match for the filter_key.
+        return_key (Optional[str]): If provided, returns a list of values for this key from the filtered items.
+    """
     if not isinstance(data_list, list):
         data_list = [data_list]
     try:
@@ -87,6 +95,8 @@ def select_from_list(data_list: list, index: Optional[int] = None, filter_key: O
             return {"result": data_list[index]}
         elif filter_key is not None and filter_value is not None:
             filtered_list = [item for item in data_list if isinstance(item, dict) and item.get(filter_key) == filter_value]
+            if return_key:
+                return {"result": [item.get(return_key) for item in filtered_list if isinstance(item, dict)]}
             return {"result": filtered_list}
         else:
             return {"error": "Either 'index' or both 'filter_key' and 'filter_value' must be provided."}
@@ -191,12 +201,16 @@ tools_schema = [
                     "data_list": {"type": "array", "description": "The list to select from or filter."},
                     "index": {"type": "integer", "description": "The 0-based index of the item to select (mutually exclusive with filter_key/filter_value)."},
                     "filter_key": {"type": "string", "description": "The key to filter dictionaries by (requires filter_value)."},
-                    "filter_value": {"type": "string", "description": "The value to match for the filter_key (requires filter_key)."}
+                    "filter_value": {"type": "string", "description": "The value to match for the filter_key (requires filter_key)."},
+                    "return_key": {"type": "string", "description": "If provided, returns a list of values for this key from the filtered items."}
                 },
                 "oneOf": [
                     {"required": ["data_list", "index"]},
                     {"required": ["data_list", "filter_key", "filter_value"]}
-                ]
+                ],
+                "dependencies": {
+                    "return_key": ["filter_key", "filter_value"]
+                }
             }
         }
     },

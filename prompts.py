@@ -65,9 +65,9 @@ Based on the user's latest request, create a JSON object that outlines the plan.
                 "is_critical": False
             },
             {
-                "thought": "Now I will filter the classified images to get only the ones that contain a dog.",
+                "thought": "Now I will filter the classified images to get only the ones that contain a dog, and I will extract just the image paths.",
                 "tool": "select_from_list",
-                "args": {"data_list": "<output_of_step_2>", "filter_key": "is_match", "filter_value": True},
+                "args": {"data_list": "<output_of_step_2>", "filter_key": "is_match", "filter_value": True, "return_key": "image_path"},
                 "is_critical": False
             }
         ]
