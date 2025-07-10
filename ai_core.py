@@ -13,10 +13,22 @@ client = AsyncOpenAI(
     api_key="not-needed"
 )
 
-async def create_plan(history: list, current_working_directory: str) -> dict:
-    """Creates a plan using the Planner agent."""
+async def gather_context(user_request: str, current_working_directory: str) -> str:
+    """Step 2: Gathers context from the environment based on the user's request.
+    This is a placeholder. Actual implementation would involve using tools like glob, list_directory, read_file.
+    """
+    # In a real scenario, this would involve LLM calls or tool usage to gather relevant info.
+    # For now, it's a placeholder.
+    print(f"\n--- Step 2: Gathering Context for request: {user_request} ---")
+    # Example: You might use tools here to list files, read relevant configs, etc.
+    # For instance, if the request is about a file, you might read its content.
+    # context_info = await read_file_tool(file_path_derived_from_request)
+    return "" # Return gathered context as a string or structured data
+
+async def create_plan(history: list, current_working_directory: str, gathered_context: str) -> dict:
+    """Step 3: Creates a plan using the Planner agent, incorporating gathered context."""
     recalled_memories = memory.recall_memories(history[-1])
-    system_prompt = get_planner_system_prompt(history, current_working_directory, recalled_memories)
+    system_prompt = get_planner_system_prompt(history, current_working_directory, recalled_memories, gathered_context)
     user_message = history[-1]
 
     try:

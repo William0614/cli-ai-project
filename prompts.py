@@ -2,7 +2,7 @@ import json
 from typing import List, Dict, Any
 from tools import tools_schema
 
-def get_planner_system_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]]) -> str:
+def get_planner_system_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]], gathered_context: str) -> str:
     """
     Returns the system prompt for the Planner agent.
     This prompt instructs the LLM to create a structured, multi-step plan.
@@ -14,6 +14,10 @@ def get_planner_system_prompt(history: list, current_working_directory: str, rec
         memories_list = [f"- {m['content']} (timestamp: {m['timestamp']})" for m in recalled_memories]
         memories_str = "\n".join(memories_list)
 
+    context_str = "No additional context gathered."
+    if gathered_context:
+        context_str = gathered_context
+
     return f"""You are an expert autonomous agent that functions as a planner.
 Your primary role is to analyze a user's request and create a comprehensive, step-by-step plan to achieve the user's goal.
 
@@ -21,6 +25,9 @@ Your primary role is to analyze a user's request and create a comprehensive, ste
 
 **Recalled Memories:**
 {memories_str}
+
+**Gathered Context:**
+{context_str}
 
 **Conversation History:**
 {history_str}
@@ -37,7 +44,7 @@ Based on the user's latest request, create a JSON object that outlines the plan.
 2.  **"save_to_memory"**: If the user provides a new piece of information that should be remembered, use this key. The value should be the string of information to save.
     Example: {json.dumps({"save_to_memory": "The user's favorite color is blue."})}
 
-3.  **"plan"**: If the request requires tool usage, use this key. The value must be a list of step objects. Each step represents a single tool call.
+3.  **"plan"**: If the request requires tool usage, use this key. The value must be a list of step objects.
 
     **IMPORTANT: Only include steps that are absolutely necessary to fulfill the user's request. Do NOT add extra steps or assume additional actions.**
 
