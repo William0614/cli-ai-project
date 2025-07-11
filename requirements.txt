@@ -4,3 +4,4 @@ colorama
 transformers
 sounddevice
 numpy
+faiss
