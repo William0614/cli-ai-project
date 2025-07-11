@@ -43,6 +43,7 @@ If the "Conversation History" contains a message like "Agent: Previous plan fail
     Example: {json.dumps({"save_to_memory": "The user's favorite color is blue."})}
 
 3.  **"plan"**: If the request requires tool usage, use this key. The value must be a list of step objects. Each step represents a single tool call.
+    *   **"overall_thought" (Optional)**: A high-level explanation of your strategy for this plan, especially when replanning. Use this to articulate your understanding of a previous failure and how this new plan addresses it.
 
     **IMPORTANT: Only include steps that are absolutely necessary to fulfill the user's request. Do NOT add extra steps or assume additional actions.**
 

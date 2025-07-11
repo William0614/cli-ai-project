@@ -181,6 +181,8 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> tuple[lis
     plan_halted = False
 
     print(Fore.YELLOW + "The AI has proposed a plan:")
+    if "overall_thought" in plan:
+        print(Fore.CYAN + f"Overall Thought: {plan['overall_thought']}")
     for i, step in enumerate(plan, 1):
         critical_tag = Fore.RED + "[CRITICAL]" if step.get("is_critical") else ""
         print(
@@ -192,7 +194,7 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> tuple[lis
     if not (approval == "" or approval == "yes"):
         print(Fore.RED + "Plan aborted by user.")
         history.append("Agent: Plan aborted by user.")
-        return plan_results  # Return empty results if aborted
+        return plan_results, True  # Return empty results and True for halted if aborted
 
     for i, step in enumerate(plan):
         if plan_halted:
@@ -303,7 +305,7 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> tuple[lis
                     + f"Checkpoint failed for step {i+1}: {step['checkpoint']}. Halting plan."
                 )
                 break
-    return plan_results
+    return plan_results, plan_halted
 
 
 async def main():
