@@ -175,7 +175,7 @@ async def get_user_input(voice_input_enabled: bool) -> tuple[str, bool]:
     return user_input, voice_input_enabled
 
 
-async def execute_plan(plan: list, spinner: Spinner, history: list) -> list:
+async def execute_plan(plan: list, spinner: Spinner, history: list) -> tuple[list, bool]:
     plan_results = []
     step_outputs = []
     plan_halted = False
@@ -344,13 +344,53 @@ async def main():
             print(Fore.GREEN + f"Saved to memory: {fact_to_save}")
 
         elif "plan" in decision:
-            plan = decision["plan"]
-            plan_results = await execute_plan(plan, spinner, history)
+            current_plan = decision["plan"]
+            MAX_REPLAN_ATTEMPTS = 2 # Define a limit for replanning attempts
+            replan_count = 0
 
-            # --- Tool Execution Logic (with expansion) ---
+            while replan_count <= MAX_REPLAN_ATTEMPTS:
+                print(Fore.YELLOW + f"Attempting plan (replan attempt {replan_count + 1}/{MAX_REPLAN_ATTEMPTS + 1})...")
+                plan_results, plan_halted = await execute_plan(current_plan, spinner, history)
 
+                if not plan_halted: # Plan executed successfully
+                    print(Fore.GREEN + "Plan completed successfully.")
+                    break # Exit replanning loop
+
+                else: # Plan failed or was aborted
+                    print(Fore.RED + "Plan execution failed or was aborted.")
+                    replan_count += 1
+                    if replan_count > MAX_REPLAN_ATTEMPTS:
+                        print(Fore.RED + "Maximum replanning attempts reached. Aborting task.")
+                        history.append("Agent: Failed to complete task after multiple replanning attempts.")
+                        break # Exit replanning loop
+
+                    # Add failure context to history for the Planner
+                    failure_message = f"Agent: Previous plan failed. Results: {json.dumps(plan_results)}. Please generate a new plan to achieve the original goal, taking this failure into account."
+                    history.append(failure_message)
+                    print(Fore.YELLOW + "Attempting to replan...")
+
+                    spinner.start()
+                    replan_decision = await create_plan(history, current_working_directory)
+                    spinner.stop()
+
+                    if "plan" in replan_decision:
+                        current_plan = replan_decision["plan"] # Use the new plan for the next attempt
+                        print(Fore.YELLOW + "New plan generated. Retrying...")
+                    elif "text" in replan_decision:
+                        # LLM decided it can't replan or has a direct answer to the failure
+                        ai_response = replan_decision["text"]
+                        print(Fore.MAGENTA + f"AI: {ai_response}")
+                        history.append(f"Agent: {ai_response}")
+                        plan_halted = False # Treat as resolved by text response
+                        break # Exit replanning loop
+                    else:
+                        print(Fore.RED + "Replanning failed to produce a valid plan or text response. Aborting.")
+                        history.append("Agent: Replanning failed to produce a valid plan.")
+                        break # Exit replanning loop
+
+            # Summarize the final outcome (either success or max attempts reached)
             spinner.start()
-            final_summary = await summarize_plan_result(plan_results)
+            final_summary = await summarize_plan_result(plan_results) # Summarize the last attempt's results
             spinner.stop()
 
             print(Fore.MAGENTA + f"\nAI: {final_summary}")
