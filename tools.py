@@ -105,13 +105,14 @@ available_tools = {
     "read_file": read_file,
     "write_file": write_file,
     "list_directory": list_directory,
-    #"classify_folder": classify_folder,
     "image_information": image_information,
     "tell_weather": tell_weather
 }
 
 # --- 3. TOOL SCHEMA ---
 tools_schema = [
+{
+    "tool_calls":[
     {
         "type": "function",
         "function": {
@@ -170,21 +171,6 @@ tools_schema = [
             }
         }
     },
-    #{
-    #    "type": "function",
-    #    "function": {
-    #        "name": "classify_folder",
-    #        "description": "Lists all the photos inside a folder that have a property that is determined by user's prompt.",
-    #        "parameters": {
-    #            "type": "object",
-    #            "properties": {
-    #                "folder_path": {"type": "string", "description": "The RELATIVE path of the folder."},
-    #                "property": {"type": "string", "description": "The property of the desired images, e.g., 'Dogs', 'Human smiling'."}
-    #            },
-    #            "required": ["folder_path", "property"]
-    #        }
-    #    }
-    #},
     {
         "type": "function",
         "function": {
@@ -214,5 +200,7 @@ tools_schema = [
             }
         }
     }
+    ]
+}
 ]
 

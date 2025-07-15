@@ -54,14 +54,17 @@ def get_directory() -> str:
     return current_working_directory
 
 async def execute_tool_call(tool_call: dict) -> str:
+    """Executes a SINGLE tool call. This function is now designed to be called concurrently."""
     global current_working_directory
 
     tool_name = tool_call["name"]
     tool_args = tool_call["parameters"]
 
+    # This special handling for 'cd' should remain, as it modifies a global state.
+    # Concurrent 'cd' calls would be problematic, but the LLM should be smart enough
+    # not to propose multiple 'cd' calls in the same independent batch.
     if tool_name == "run_shell_command":
         command = tool_args.get("command", "")
-        # This logic correctly handles the 'cd' command within the tool execution.
         if command.strip().startswith("cd "):
             new_path = command.strip()[3:].strip()
             if os.path.isabs(new_path):
@@ -72,6 +75,9 @@ async def execute_tool_call(tool_call: dict) -> str:
             target_path = os.path.normpath(target_path)
 
             if os.path.isdir(target_path):
+                # Note: This is a side-effect that is not thread-safe by nature.
+                # It's tolerated here because it's unlikely the LLM will issue
+                # multiple 'cd' commands in a single parallel batch.
                 current_working_directory = target_path
                 summary = f"Changed directory to {current_working_directory}"
                 print(Fore.GREEN + summary)
@@ -86,15 +92,18 @@ async def execute_tool_call(tool_call: dict) -> str:
     if tool_name in available_tools:
         tool_function = available_tools[tool_name]
         
-        # The print statement is now part of the confirmation prompt,
-        # but we can keep one here for when confirmation is disabled.
+        # We print before execution for clarity, especially in a concurrent scenario.
         print(Fore.CYAN + f"Executing: {tool_name}({tool_args})")
         
-   
-        raw_output = await tool_function(**tool_args)
-        summary = await summarize_tool_result(tool_name, tool_args, raw_output)
-        print(Fore.GREEN + summary)
-        return summary
+        try:
+            raw_output = await tool_function(**tool_args)
+            summary = await summarize_tool_result(tool_name, tool_args, raw_output)
+            print(Fore.GREEN + f"Result for {tool_name}: {summary}")
+            return summary
+        except Exception as e:
+            error_msg = f"Error executing tool {tool_name}: {e}"
+            print(Fore.RED + error_msg)
+            return error_msg
     else:
         error_msg = f"Error: Unknown tool '{tool_name}'."
         print(Fore.RED + error_msg)
@@ -115,8 +124,7 @@ async def main():
             break
 
         conversation_history.append(f"User: {initial_user_prompt}")
-
-        # --- MODIFIED: Reset confirmation for each new task ---
+        
         task_confirmation_enabled = CONFIRMATION_REQUIRED_BY_DEFAULT
         task_scratchpad = []
         task_in_progress = True
@@ -134,43 +142,52 @@ async def main():
             )
             spinner.stop()
 
-            # --- START: Major Change - Confirmation Logic ---
-            if "tool_call" in decision:
-                tool_call = decision["tool_call"]
+            # --- START: MODIFICATION FOR BATCH TOOL EXECUTION ---
+            # The agent can now return a list of tool calls to be executed in parallel.
+            if "tool_calls" in decision and decision["tool_calls"]:
+                list_of_tool_calls = decision["tool_calls"]
                 
-                user_approved_action = False
-                action_summary = ""
-
+                user_approved_batch = False
+                
                 if not task_confirmation_enabled:
-                    user_approved_action = True
+                    user_approved_batch = True
                 else:
-                    # Formulate the question for the user
-                    tool_name = tool_call["name"]
-                    tool_args = tool_call["parameters"]
-                    prompt_message = f"Proposed Action: {Fore.CYAN}{tool_name}({tool_args})"
+                    # Formulate the question for the user, showing the full plan.
+                    print(f"{Fore.YELLOW}The agent proposes the following parallel actions:")
+                    for i, tool_call in enumerate(list_of_tool_calls):
+                        print(f"  {i+1}. {Fore.CYAN}{tool_call['name']}({tool_call['parameters']})")
                     
-                    user_choice = input(f"{prompt_message}\n{Fore.YELLOW}Proceed? (y/n/a - yes/no/always for this task): ").lower()
+                    user_choice = input(f"{Fore.YELLOW}Proceed with this batch? (y/n/a - yes/no/always for this task): ").lower()
 
                     if user_choice in ['y', 'yes']:
-                        user_approved_action = True
+                        user_approved_batch = True
                     elif user_choice in ['a', 'always']:
-                        user_approved_action = True
-                        task_confirmation_enabled = False # Disable confirmation for the rest of this task
+                        user_approved_batch = True
+                        task_confirmation_enabled = False # Disable for the rest of this task
                         print(Fore.GREEN + "Confirmation disabled for the remainder of this task.")
                     else: # 'n', 'no', or anything else is a rejection
-                        action_summary = "User rejected the proposed action."
-                        print(Fore.RED + action_summary)
-                        user_approved_action = False
+                        rejection_summary = "User rejected the proposed batch of actions."
+                        print(Fore.RED + rejection_summary)
+                        task_scratchpad.append(f"Observation: {rejection_summary}")
+                        # We break here because the agent's plan was rejected. It needs to rethink.
+                        # Depending on the desired behavior, you could also just continue to the next loop.
+                        break
 
-                # Execute the action only if approved
-                if user_approved_action:
-                    action_summary = await execute_tool_call(tool_call)
-                else:
-                    break
-                # Record the action and its result (either success, failure, or user rejection)
-                task_scratchpad.append(f"Action: {tool_call['name']}({tool_call['parameters']})")
-                task_scratchpad.append(f"Observation: {action_summary}")
-            # --- END: Major Change - Confirmation Logic ---
+                if user_approved_batch:
+                    # Create a list of concurrent tasks
+                    tasks = [execute_tool_call(tc) for tc in list_of_tool_calls]
+                    
+                    # Execute them all concurrently and wait for all to complete
+                    print(Fore.YELLOW + f"--- Executing Batch of {len(tasks)} Actions ---")
+                    batch_results = await asyncio.gather(*tasks)
+                    print(Fore.YELLOW + f"--- Batch Execution Complete ---")
+
+                    # Record the actions and their results in the scratchpad for the next LLM call
+                    for tool_call, result_summary in zip(list_of_tool_calls, batch_results):
+                        task_scratchpad.append(f"Action: {tool_call['name']}({tool_call['parameters']})")
+                        task_scratchpad.append(f"Observation: {result_summary}")
+
+            # --- END: MODIFICATION FOR BATCH TOOL EXECUTION ---
 
             elif "final_answer" in decision:
                 ai_response = decision["final_answer"]
@@ -189,8 +206,11 @@ async def main():
                     print(Fore.GREEN + "Saved task summary to long-term memory.")
 
             else:
-                error_msg = f"Error: Agent returned an invalid decision format: {decision}"
+                # This handles both the old "tool_call" format (if the LLM regresses) and any other invalid format.
+                error_key = "tool_call" if "tool_call" in decision else "unknown format"
+                error_msg = f"Error: Agent returned an invalid or outdated decision format ({error_key}). Expected 'tool_calls' or 'final_answer'."
                 print(Fore.RED + error_msg)
+                print(f"Decision received: {decision}")
                 conversation_history.append(f"Agent: Error: {error_msg}")
                 task_in_progress = False
 

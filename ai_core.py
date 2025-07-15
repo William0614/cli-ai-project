@@ -94,7 +94,7 @@ async def summarize_tool_result(tool_name: str, tool_args: dict, tool_output: di
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": summarizer_prompt}
             ],
-            max_tokens=100,
+            max_tokens=200,
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
