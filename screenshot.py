@@ -1,5 +1,3 @@
-# file: screenshot.py
-
 from playwright.async_api import async_playwright, Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
 
 async def take_screenshot_with_playwright(url: str, output_path: str = "screenshot.png"):

@@ -89,7 +89,7 @@ async def image_information(query: str, file_path) -> dict:
 
 async def tell_weather(query: str) -> dict:
 
-    real_query = query + ' ' + "accuweather"
+    real_query = query + ' ' + "weather bbc"
     await search_and_screenshot(real_query)
     answer = await image_to_text_function(real_query+". Tell the weather taking into consideration that the current date is " +  get_current_date_and_time(), "screenshot.png")
     try:

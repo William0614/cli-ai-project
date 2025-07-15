@@ -35,7 +35,7 @@ async def get_agent_decision(
     """
     # 1. Recall long-term memories relevant to the main goal
     recalled_memories = memory.recall_memories(initial_user_prompt)
-    recalled_memories = ""
+    #recalled_memories = ""
     # 2. Get the system prompt (this needs to be updated in prompts.py)
     # It now contains the core instructions for the reasoning loop.
     system_prompt = get_agent_system_prompt(current_working_directory,conversation_history, initial_user_prompt, task_scratchpad, recalled_memories)
@@ -66,7 +66,7 @@ async def get_agent_decision(
 
     try:
         response = await client.chat.completions.create(
-            model="Qwen/Qwen2.5-Coder-32B-Instruct",
+            model="Qwen/Qwen2.5-Coder-14B-Instruct",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content}
@@ -89,7 +89,7 @@ async def summarize_tool_result(tool_name: str, tool_args: dict, tool_output: di
 
     try:
         response = await client.chat.completions.create(
-            model="Qwen/Qwen2.5-Coder-32B-Instruct",
+            model="Qwen/Qwen2.5-Coder-14B-Instruct",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": summarizer_prompt}
