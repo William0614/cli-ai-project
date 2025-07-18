@@ -24,7 +24,7 @@ def get_agent_system_prompt(
         recent_memories = sorted_memories[:num_recent_to_show]
         memories_list = [f"- {m['content']} (timestamp: {m['timestamp']})" for m in recent_memories]
         memories_str = "\n".join(memories_list)
-
+    
     # --- START: THE NEW, REVISED PROMPT ---
     return f"""
 You are an expert autonomous agent. Your primary objective is to achieve the user's goal by breaking it down into a sequence of logical actions.
@@ -115,8 +115,8 @@ You will select `final_answer` ONLY under one of the following conditions:
         ```json
         {{
           "tool_calls": [
-            {{ "name": "list_directory", "parameters": {{ "path": "./src" }} }},
-            {{ "name": "read_file", "parameters": {{ "file_path": "README.md" }} }}
+            {{'type':'function','function': {{ "name": "list_directory", "parameters": {{ "path": "./src" }} }}}},
+            {{'type':'function','function': {{ "name": "read_file", "parameters": {{ "file_path": "README.md" }} }}}}
           ]
         }}
         ```
@@ -125,8 +125,8 @@ You will select `final_answer` ONLY under one of the following conditions:
         // INVALID - DO NOT DO THIS
         {{
           "tool_calls": [
-            {{ "name": "run_shell_command", "parameters": {{ "command": "touch new_file.py" }} }},
-            {{ "name": "write_file", "parameters": {{ "file_path": "new_file.py", "content": "# New file" }} }}
+            {{'type':'function','function': {{ "name": "run_shell_command", "parameters": {{ "command": "touch new_file.py" }} }}}},
+            {{'type':'function','function':{{ "name": "write_file", "parameters": {{ "file_path": "new_file.py", "content": "# New file" }} }}}}
           ]
         }}
         ```
@@ -137,6 +137,8 @@ You will select `final_answer` ONLY under one of the following conditions:
     *   To list a directory's contents: **CORRECT:** Use `list_directory`. **INCORRECT:** Avoid `run_shell_command` with `ls` or `dir`.
     *   To produce information of a photo: **CORRECT**: Use `image_information`. **INCORRECT**: Do not use `run_shell_command`.
     *   Use `run_shell_command` only when no other tool can accomplish your goal (e.g., `cd`, `mkdir`, `mv`).
+
+    The available tools are {available_tools}
 
     YOU HAVE TO OUTPUT A JSON OBJECT EXACTLY AS PRESENTED IN THE TOOL SCHEMA: {tools_schema}
     """

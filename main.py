@@ -57,8 +57,8 @@ async def execute_tool_call(tool_call: dict) -> str:
     """Executes a SINGLE tool call. This function is now designed to be called concurrently."""
     global current_working_directory
 
-    tool_name = tool_call["name"]
-    tool_args = tool_call["parameters"]
+    tool_name = tool_call.get('name')
+    tool_args = tool_call.get('parameters')
 
     # This special handling for 'cd' should remain, as it modifies a global state.
     # Concurrent 'cd' calls would be problematic, but the LLM should be smart enough
@@ -140,6 +140,7 @@ async def main():
                 task_scratchpad, 
                 current_working_directory
             )
+            print(decision)
             spinner.stop()
 
             # --- START: MODIFICATION FOR BATCH TOOL EXECUTION ---
@@ -155,6 +156,7 @@ async def main():
                     # Formulate the question for the user, showing the full plan.
                     print(f"{Fore.YELLOW}The agent proposes the following parallel actions:")
                     for i, tool_call in enumerate(list_of_tool_calls):
+                        tool_call = tool_call['function']
                         print(f"  {i+1}. {Fore.CYAN}{tool_call['name']}({tool_call['parameters']})")
                     
                     user_choice = input(f"{Fore.YELLOW}Proceed with this batch? (y/n/a - yes/no/always for this task): ").lower()
@@ -175,7 +177,7 @@ async def main():
 
                 if user_approved_batch:
                     # Create a list of concurrent tasks
-                    tasks = [execute_tool_call(tc) for tc in list_of_tool_calls]
+                    tasks = [execute_tool_call(tc['function']) for tc in list_of_tool_calls]
                     
                     # Execute them all concurrently and wait for all to complete
                     print(Fore.YELLOW + f"--- Executing Batch of {len(tasks)} Actions ---")
@@ -184,6 +186,7 @@ async def main():
 
                     # Record the actions and their results in the scratchpad for the next LLM call
                     for tool_call, result_summary in zip(list_of_tool_calls, batch_results):
+                        tool_call = tool_call['function']
                         task_scratchpad.append(f"Action: {tool_call['name']}({tool_call['parameters']})")
                         task_scratchpad.append(f"Observation: {result_summary}")
 

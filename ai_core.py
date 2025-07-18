@@ -66,7 +66,7 @@ async def get_agent_decision(
 
     try:
         response = await client.chat.completions.create(
-            model="Qwen/Qwen2.5-Coder-14B-Instruct",
+            model="Qwen/Qwen2.5-Coder-32B-Instruct",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content}
@@ -89,13 +89,86 @@ async def summarize_tool_result(tool_name: str, tool_args: dict, tool_output: di
 
     try:
         response = await client.chat.completions.create(
-            model="Qwen/Qwen2.5-Coder-14B-Instruct",
+            model="Qwen/Qwen2.5-Coder-32B-Instruct",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": summarizer_prompt}
             ],
-            max_tokens=200,
+            max_tokens=200
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
         return f"An error occurred during summarization: {e}"
+
+async def verify_agent_plan(initial_user_prompt: str, task_scratchpad: list, proposed_plan: list) -> dict:
+    """
+    Calls a supervisor LLM to check if a proposed plan is logical, safe, and effective.
+    
+    Returns a dictionary with a decision: 'APPROVE', 'DECLINE', or 'CONFIRM_CRITICAL'.
+    """
+    
+    system_prompt = """
+    You are a meticulous and cautious AI assistant supervisor. Your role is to review a plan of tool calls proposed by another AI agent. Your primary duty is to ensure the plan is logical, safe, and directly helps achieve the user's ultimate goal. You MUST respond with a single JSON object.
+
+    You will be given the user's goal, the agent's work history (scratchpad), and the agent's proposed plan.
+
+    Analyze the plan and choose one of three possible decisions:
+
+    1.  **APPROVE**: The plan is logical, safe, and a clear step towards the user's goal.
+        - Example: The user wants to read a file, and the plan is `[{"name": "read_file", "parameters": {"file_path": "file.txt"}}]`. This is a good plan.
+        - JSON Output: `{"decision": "APPROVE"}`
+
+    2.  **DECLINE**: The plan is illogical, incorrect, hallucinates tool usage, or is inefficient. It will not help solve the user's goal.
+        - Example: The user wants to list files, but the plan is `[{"name": "write_file", "parameters": {}}]`. This is wrong.
+        - JSON Output: `{"decision": "DECLINE", "reason": "The plan uses the wrong tool. It should use 'list_directory' not 'write_file'."}`
+
+    3.  **CONFIRM_CRITICAL**: The plan includes a potentially dangerous or irreversible action. This requires human confirmation.
+        - CRITICAL actions include: deleting files (`delete_file`), running destructive shell commands (`rm`, `mv`), or overwriting important existing files.
+        - Example: The plan is `[{"name": "delete_file", "parameters": {"file_path": "config.json"}}]`. This is dangerous.
+        - JSON Output: `{"decision": "CONFIRM_CRITICAL", "reason": "The plan proposes to delete a file, which is an irreversible action."}`
+
+    Your response MUST be a single JSON object with a "decision" key and an optional "reason" key. Do not add any other text.
+    """
+
+    formatted_scratchpad = "\n".join(task_scratchpad) if task_scratchpad else "No actions taken yet."
+    formatted_plan = json.dumps(proposed_plan, indent=2)
+
+    user_content = f"""
+    **User's Ultimate Goal:**
+    {initial_user_prompt}
+
+    **Agent's Work History (Scratchpad):**
+    ```
+    {formatted_scratchpad}
+    ```
+
+    **Agent's Proposed Plan to Execute Next:**
+    ```json
+    {formatted_plan}
+    ```
+
+    Review the proposed plan based on the goal and history. Is it logical and safe? Provide your decision as a single JSON object.
+    """
+
+    try:
+        response = await client.chat.completions.create(
+            model="Qwen/Qwen2.5-Coder32B-Instruct",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            response_format={"type": "json_object"}
+        )
+        
+        decision = json.loads(response.choices[0].message.content)
+        if 'decision' not in decision or decision['decision'] not in ['APPROVE', 'DECLINE', 'CONFIRM_CRITICAL']:
+             raise ValueError("Verifier returned an invalid decision format.")
+        return decision
+
+    except Exception as e:
+        print(f"{Fore.RED}Error getting plan verification: {e}")
+        # Fail-safe: If the verifier fails, default to requiring human confirmation.
+        return {
+            "decision": "CONFIRM_CRITICAL",
+            "reason": f"The AI verifier failed with an error: {e}. Please review the plan carefully."
+        }
