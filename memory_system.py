@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 from sentence_transformers import SentenceTransformer
 import database as db
 
-MODEL = SentenceTransformer('all-MiniLM-L6-v2')
+MODEL = SentenceTransformer('all-MiniLM-L6-v2',cache_folder= '/mnt/model_weights/hub/hub')
 
 def _generate_embedding(text: str) -> bytes:
     """Generates a vector embedding for a given text."""

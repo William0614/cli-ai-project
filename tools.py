@@ -66,7 +66,8 @@ def list_directory(path: str = '.') -> dict:
     """Lists a directory and returns its contents as a list."""
     try:
         entries = os.listdir(path)
-        return {"result": entries}
+        absolute_paths = [os.path.join(path, entry) for entry in entries]
+        return {"result": absolute_paths}
     except Exception as e:
         return {"error": str(e)}
 

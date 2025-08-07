@@ -65,11 +65,6 @@ async def classify_image(image_path: str, question: str) -> dict:
     start_local_server_if_not_running()
 
     if not os.path.exists(image_path):
-        # Prepend 'photos/' if it's not already there and the path is not absolute
-        if not os.path.isabs(image_path) and not image_path.startswith('photos/'):
-            image_path = os.path.join('photos', image_path)
-
-    if not os.path.exists(image_path):
         return {"error": f"Image file not found at {image_path}"}
 
     # Construct the URL for the image relative to the server's root

@@ -5,3 +5,4 @@ transformers
 sounddevice
 numpy
 faiss
+distro

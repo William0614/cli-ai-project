@@ -12,6 +12,7 @@ from tools import available_tools
 import memory_system as memory
 from speech_to_text import get_voice_input_whisper
 from colorama import init, Fore
+from os_detect import get_os_info
 
 init(autoreset=True)
 
@@ -201,7 +202,6 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> tuple[lis
             break
 
         print(Fore.CYAN + f"\n--- Executing Step {i+1}/{len(plan)} ---")
-        print(Fore.CYAN + f"Thought: {step['thought']}")
 
         current_args = substitute_placeholders(step["args"], step_outputs)
 
@@ -263,7 +263,8 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> tuple[lis
             spinner.start()
             result = await execute_tool(step["tool"], single_args)
             spinner.stop()
-
+            print(f"{result}\n")
+            print(f"status {result['status']}")
             if result["status"] == "Error":
                 print(Fore.RED + f"Error in step {i+1}: {result['output']}")
                 plan_results.append(
@@ -292,7 +293,7 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> tuple[lis
         plan_results.append(
             {"tool": step["tool"], "status": "Success", "output": final_output}
         )
-        print(Fore.GREEN + f"Step {i+1} completed successfully.")
+        print(Fore.GREEN + f"{final_output}")
 
         if "checkpoint" in step:
             if (
@@ -351,7 +352,8 @@ async def main():
             replan_count = 0
 
             while replan_count <= MAX_REPLAN_ATTEMPTS:
-                print(Fore.YELLOW + f"Attempting plan (replan attempt {replan_count + 1}/{MAX_REPLAN_ATTEMPTS + 1})...")
+                if replan_count >= 1:
+                    print(Fore.YELLOW + f"Replanning (replan attempt {replan_count + 1}/{MAX_REPLAN_ATTEMPTS + 1})...")
                 plan_results, plan_halted = await execute_plan(current_plan, spinner, history)
 
                 if not plan_halted: # Plan executed successfully
@@ -365,6 +367,10 @@ async def main():
                         print(Fore.RED + "Maximum replanning attempts reached. Aborting task.")
                         history.append("Agent: Failed to complete task after multiple replanning attempts.")
                         break # Exit replanning loop
+                    
+                    replan_approval = input("Try replan? (Enter/no): ").lower()
+                    if replan_approval != "" or replan_approval != "yes":
+                        break
 
                     # Add failure context to history for the Planner
                     failure_message = f"Agent: Previous plan failed. Results: {json.dumps(plan_results)}. Please generate a new plan to achieve the original goal, taking this failure into account."
