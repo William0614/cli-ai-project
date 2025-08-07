@@ -7,7 +7,7 @@ import json
 import time
 import sys
 import os
-from ai_core import create_plan, summarize_plan_result
+from ai_core import create_plan, summarize_plan_result, evaluate_result
 from tools import available_tools
 import memory_system as memory
 from speech_to_text import get_voice_input_whisper
@@ -68,11 +68,12 @@ async def execute_tool(tool_name: str, tool_args: dict) -> dict:
             if os.path.isdir(target_path):
                 current_working_directory = target_path
                 return {
+                    "tool name": tool_name,
                     "status": "Success",
                     "output": f"Changed directory to {current_working_directory}",
                 }
             else:
-                return {"status": "Error", "output": f"Directory not found: {new_path}"}
+                return {"tool name": tool_name, "status": "Error", "output": f"Directory not found: {new_path}"}
 
         tool_args["directory"] = current_working_directory
 
@@ -85,13 +86,13 @@ async def execute_tool(tool_name: str, tool_args: dict) -> dict:
             else:
                 raw_output = tool_function(**tool_args)
             if "error" in raw_output:
-                return {"status": "Error", "output": raw_output["error"]}
+                return {"tool name": tool_name, "status": "Error", "output": raw_output["error"]}
             else:
-                return {"status": "Success", "output": raw_output}
+                return {"tool name": tool_name, "status": "Success", "output": raw_output}
         except Exception as e:
-            return {"status": "Error", "output": f"Tool execution failed: {e}"}
+            return {"tool name": tool_name, "status": "Error", "output": f"Tool execution failed: {e}"}
     else:
-        return {"status": "Error", "output": f"Unknown tool '{tool_name}'."}
+        return {"tool name": tool_name, "status": "Error", "output": f"Unknown tool '{tool_name}'."}
 
 
 def substitute_placeholders(args: dict, step_outputs: list) -> dict:
@@ -263,8 +264,8 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> tuple[lis
             spinner.start()
             result = await execute_tool(step["tool"], single_args)
             spinner.stop()
-            print(f"{result}\n")
-            print(f"status {result['status']}")
+            # print(f"{result}\n")
+            # print(f"status {result['status']}")
             if result["status"] == "Error":
                 print(Fore.RED + f"Error in step {i+1}: {result['output']}")
                 plan_results.append(
@@ -277,7 +278,20 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> tuple[lis
                 plan_halted = True
                 break
             else:
-                step_output_collector.append(result["output"])
+                print(f"{result}\n")
+                if await evaluate_result(result) == 0:
+                    print(Fore.RED + f"Error in step {i+1}: {result['output']}")
+                    plan_results.append(
+                        {
+                            "tool": step["tool"],
+                            "status": "Error",
+                            "output": result["output"],
+                        }
+                    )
+                    plan_halted = True
+                    break
+                else:
+                    step_output_collector.append(result["output"])
 
         if plan_halted:
             continue

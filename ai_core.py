@@ -42,6 +42,38 @@ async def create_plan(history: list, current_working_directory: str) -> dict:
         print(f"Error: {e}")
         return {"text": "Sorry, an error occurred."}
 
+async def evaluate_result(step_result: dict) -> int:
+    """Asks the LLM to evaluate the result of step execution."""
+    if not step_result:
+        return 0
+    
+    print("Evaluating step result...\n")
+
+    try:
+        step_result_str = json.dumps(step_result, indent=2)
+
+        response = await client.chat.completions.create(
+            model="Qwen/Qwen2.5-72B-Instruct",
+            messages= [
+                {"role": "system", "content": "You are a verifier assistant to verify if the result of a step execution is valid. If the result contains error or failure, return the single digit 0. If the execution is successful without any failures, return the signle digit 1."},
+                {"role": "user", "content": step_result_str}
+            ],
+            max_tokens=1000,
+        )
+
+        llm_response_content = response.choices[0].message.content.strip()
+
+        try:
+            return int(llm_response_content)
+        except ValueError:
+            print(f"An error occured during evaluation: {e}")
+            return -1
+
+    except Exception as e:
+        print(f"An error occurred during evaluation: {e}")
+        return -1
+
+
 async def summarize_plan_result(plan_results: list) -> str:
     """Asks the LLM to generate an ultimate response to the user prompt using the outcome of the plan's execution."""
     if not plan_results:
