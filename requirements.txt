@@ -4,5 +4,6 @@ colorama
 transformers
 sounddevice
 numpy
-faiss
+faiss-cpu
 distro
+terminal-bench

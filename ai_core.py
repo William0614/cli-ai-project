@@ -10,7 +10,7 @@ load_dotenv()
 
 # Create an async client pointing to your local server
 client = AsyncOpenAI(
-    base_url="http://localhost:8002/v1",
+    base_url="http://localhost:8003/v1",
     api_key="not-needed"
 )
 
