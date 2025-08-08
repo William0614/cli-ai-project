@@ -12,14 +12,13 @@ from tools import available_tools
 import memory_system as memory
 from speech_to_text import get_voice_input_whisper
 from colorama import init, Fore
-from os_detect import get_os_info
 
 init(autoreset=True)
 
 
 # --- The Loading Spinner Class ---
 class Spinner:
-    def __init__(self, message="Thinking..."):
+    def __init__(self, message: str):
         self.spinner = itertools.cycle(["-", "/", "|", "\\"])
         self.message = message
         self.running = False
@@ -85,10 +84,14 @@ async def execute_tool(tool_name: str, tool_args: dict) -> dict:
                 raw_output = await tool_function(**tool_args)
             else:
                 raw_output = tool_function(**tool_args)
-            if "error" in raw_output:
-                return {"tool name": tool_name, "status": "Error", "output": raw_output["error"]}
-            else:
-                return {"tool name": tool_name, "status": "Success", "output": raw_output}
+            print(f"raw_output: {raw_output}")
+            if tool_name == "run_shell_command":
+                if raw_output['result']['exit_code'] != 0:
+                    return {"tool name": tool_name, "status": "Error", "output": raw_output}
+            else: 
+                if "error" in raw_output:
+                    return {"tool name": tool_name, "status": "Error", "output": raw_output}
+            return {"tool name": tool_name, "status": "Success", "output": raw_output}
         except Exception as e:
             return {"tool name": tool_name, "status": "Error", "output": f"Tool execution failed: {e}"}
     else:
@@ -177,7 +180,7 @@ async def get_user_input(voice_input_enabled: bool) -> tuple[str, bool]:
     return user_input, voice_input_enabled
 
 
-async def execute_plan(plan: list, spinner: Spinner, history: list) -> tuple[list, bool]:
+async def execute_plan(plan: list, history: list) -> tuple[list, bool]:
     plan_results = []
     step_outputs = []
     plan_halted = False
@@ -214,9 +217,9 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> tuple[lis
         if step['tool'] == 'run_shell_command' and 'command' in current_args:
             command_parts = current_args['command'].split()
             list_args = []
-            for i, part in enumerate(command_parts):
+            for c, part in enumerate(command_parts):
                 if isinstance(part, list):
-                    list_args.append((i, part))
+                    list_args.append((c, part))
             
             if len(list_args) > 0:
                 is_expanded = True
@@ -260,12 +263,11 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> tuple[lis
                     )
                     plan_halted = True
                     break
-
+            
+            spinner = Spinner("Executing...")
             spinner.start()
             result = await execute_tool(step["tool"], single_args)
             spinner.stop()
-            # print(f"{result}\n")
-            # print(f"status {result['status']}")
             if result["status"] == "Error":
                 print(Fore.RED + f"Error in step {i+1}: {result['output']}")
                 plan_results.append(
@@ -279,19 +281,19 @@ async def execute_plan(plan: list, spinner: Spinner, history: list) -> tuple[lis
                 break
             else:
                 print(f"{result}\n")
-                if await evaluate_result(result) == 0:
-                    print(Fore.RED + f"Error in step {i+1}: {result['output']}")
-                    plan_results.append(
-                        {
-                            "tool": step["tool"],
-                            "status": "Error",
-                            "output": result["output"],
-                        }
-                    )
-                    plan_halted = True
-                    break
-                else:
-                    step_output_collector.append(result["output"])
+                # if await evaluate_result(result) == 0:
+                #     print(Fore.RED + f"Error in step {i+1}: {result['output']}")
+                #     plan_results.append(
+                #         {
+                #             "tool": step["tool"],
+                #             "status": "Error",
+                #             "output": result["output"],
+                #         }
+                #     )
+                #     plan_halted = True
+                #     break
+                # else:
+                step_output_collector.append(result["output"])
 
         if plan_halted:
             continue
@@ -328,7 +330,7 @@ async def main():
         Fore.YELLOW
         + "Autonomous Agent Started. Type '/voice' to toggle voice input. Type 'exit' to quit."
     )
-    spinner = Spinner()
+    spinner = Spinner("Thinking...")
     history = []
     voice_input_enabled = False  # Voice input is off by default
 
@@ -368,7 +370,7 @@ async def main():
             while replan_count <= MAX_REPLAN_ATTEMPTS:
                 if replan_count >= 1:
                     print(Fore.YELLOW + f"Replanning (replan attempt {replan_count + 1}/{MAX_REPLAN_ATTEMPTS + 1})...")
-                plan_results, plan_halted = await execute_plan(current_plan, spinner, history)
+                plan_results, plan_halted = await execute_plan(current_plan, history)
 
                 if not plan_halted: # Plan executed successfully
                     print(Fore.GREEN + "Plan completed successfully.")
@@ -383,9 +385,10 @@ async def main():
                         break # Exit replanning loop
                     
                     replan_approval = input("Try replan? (Enter/no): ").lower()
-                    if replan_approval != "" or replan_approval != "yes":
+                    if replan_approval != '' and replan_approval != "yes":
                         break
-
+                    
+                    print(f"plan results: {plan_results}")
                     # Add failure context to history for the Planner
                     failure_message = f"Agent: Previous plan failed. Results: {json.dumps(plan_results)}. Please generate a new plan to achieve the original goal, taking this failure into account."
                     history.append(failure_message)
