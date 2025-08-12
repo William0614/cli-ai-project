@@ -1,9 +1,10 @@
-google-generativeai
 python-dotenv
 colorama
 transformers
+sentence-transformers
 sounddevice
 numpy
 faiss-cpu
 distro
 terminal-bench
+aiofiles

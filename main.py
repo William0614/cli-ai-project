@@ -10,7 +10,7 @@ import os
 from ai_core import create_plan, summarize_plan_result, evaluate_result
 from tools import available_tools
 import memory_system as memory
-from speech_to_text import get_voice_input_whisper
+# from speech_to_text import get_voice_input_whisper
 from colorama import init, Fore
 
 init(autoreset=True)
@@ -168,7 +168,7 @@ async def get_user_input(voice_input_enabled: bool) -> tuple[str, bool]:
     user_input = ""
     if voice_input_enabled:
         print(Fore.CYAN + "\nListening for your command (voice enabled)...")
-        user_input = get_voice_input_whisper(duration=5)
+        # user_input = get_voice_input_whisper(duration=5)
         if user_input:
             print(f"> You said: {user_input}")
         else:
