@@ -8,10 +8,11 @@ from os_detect import get_os_info
 
 load_dotenv()
 
+openai_api_key = os.getenv("OPENAI_API_KEY")
+
 # Create an async client pointing to your local server
 client = AsyncOpenAI(
-    base_url="http://localhost:8003/v1",
-    api_key="not-needed"
+    api_key=openai_api_key,
 )
 
 async def create_plan(history: list, current_working_directory: str) -> dict:
@@ -23,7 +24,7 @@ async def create_plan(history: list, current_working_directory: str) -> dict:
 
     try:
         response = await client.chat.completions.create(
-            model="Qwen/Qwen2.5-72B-Instruct",
+            model="gpt-5-nano",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
@@ -53,7 +54,7 @@ async def evaluate_result(step_result: dict) -> int:
         step_result_str = json.dumps(step_result, indent=2)
 
         response = await client.chat.completions.create(
-            model="Qwen/Qwen2.5-72B-Instruct",
+            model="gpt-5-nano",
             messages= [
                 {"role": "system", "content": "You are a verifier assistant to verify if the result of a step execution is valid. If the result contains error or failure, return the single digit 0. If the execution is successful without any failures, return the signle digit 1."},
                 {"role": "user", "content": step_result_str}
@@ -83,7 +84,7 @@ async def summarize_plan_result(plan_results: list) -> str:
 
     try:
         response = await client.chat.completions.create(
-            model="Qwen/Qwen2.5-72B-Instruct",
+            model="gpt-5-nano",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant who answers the user prompt using plan execution results."},
                 {"role": "user", "content": summary_prompt}
