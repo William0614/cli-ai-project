@@ -7,11 +7,11 @@ from image_tools import classify_image
 
 # --- 1. ASYNC TOOL IMPLEMENTATIONS ---
 
-async def run_shell_command(command: str, directory: Optional[str] = None) -> dict:
+async def run_shell_command(command: list, directory: Optional[str] = None) -> dict:
     """Executes a shell command asynchronously and returns its structured output."""
     try:
-        process = await asyncio.create_subprocess_shell(
-            command,
+        process = await asyncio.create_subprocess_exec(
+            *command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=directory # Use the provided directory
@@ -124,7 +124,7 @@ tools_schema = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "command": {"type": "string", "description": "The command to execute."},
+                    "command": {"type": "array", "items": {"type": "string"}, "description": "The command to execute, as a list of strings."},
                     "directory": {"type": "string", "description": "The directory to execute the command in. Defaults to the current working directory."}
                 },
                 "required": ["command"]

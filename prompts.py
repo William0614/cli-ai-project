@@ -2,10 +2,10 @@ import json
 from typing import List, Dict, Any
 from tools import tools_schema
 
-def get_planner_system_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]]) -> str:
+def get_react_system_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]]) -> str:
     """
-    Returns the system prompt for the Planner agent.
-    This prompt instructs the LLM to create a structured, multi-step plan.
+    Returns the system prompt for the ReAct agent.
+    This prompt instructs the LLM to create a single thought and action.
     """
     history_str = "\n".join(history)
     
@@ -14,8 +14,8 @@ def get_planner_system_prompt(history: list, current_working_directory: str, rec
         memories_list = [f"- {m['content']} (timestamp: {m['timestamp']})" for m in recalled_memories]
         memories_str = "\n".join(memories_list)
 
-    return f"""You are an expert autonomous agent that functions as a planner.
-Your primary role is to analyze a user's request and create a comprehensive, step-by-step plan to achieve the user's goal.
+    return f"""You are an expert autonomous agent that functions as a ReAct-style agent.
+Your primary role is to analyze a user's request and the conversation history, and then decide on the single next best action to take.
 
 **Current Working Directory:** {current_working_directory}
 
@@ -26,70 +26,38 @@ Your primary role is to analyze a user's request and create a comprehensive, ste
 {history_str}
 
 **Your Task:**
-Based on the user's latest request, create a JSON object that outlines the plan. You have three choices for the top-level key in the JSON response:
-
-**Replanning Guidance:**
-If the "Conversation History" contains a message like "Agent: Previous plan failed. Results: {...}", it means the last attempt to execute a plan failed. Analyze the provided failure results and the original user goal. Your task is to generate a new, revised plan that attempts to overcome the previous failure. 
-First, provide a one-sentence summary of the failure reason. Then, in a short paragraph, explain how your new plan addresses this specific failure. Finally, generate the new, revised plan.
-If you determine the task is impossible with the available tools or requires further user input, respond with a "text" message explaining the situation.
-
+Based on the user's latest request and the conversation history, generate a JSON object with your thought and the next action to take. You have three choices for the top-level key in the JSON response:
 
 1.  **"text"**: If the user's request is a simple question, a greeting, or can be answered directly without tools, use this key. The value should be the response string.
-    *   **Crucially, when asked about personal information (e.g., your preferences, age, name), you MUST ONLY use information present in the "Recalled Memories" section. If the information is not there, state that you don't know or don't have that information.**
-    *   **If a direct answer to the user prompt is not in "Recalled Memories", but it can be inferred from it, then do so. However, if you are not certain, state that it is an assumption for clarity.**
-    *   **AVOID STEREOTYPE and DO NOT be BIASED.**
     Example: {json.dumps({"text": "Hello! How can I help you today?"})}
 
 2.  **"save_to_memory"**: If the user provides a new piece of information that should be remembered, use this key. The value should be the string of information to save.
     Example: {json.dumps({"save_to_memory": "The user's favorite color is blue."})}
 
-3.  **"plan"**: If the request requires tool usage, use this key. The value must be a list of step objects. Each step represents a single tool call.
-    *   **"overall_thought" (Optional)**: A high-level explanation of your strategy for this plan, especially when replanning. Use this to articulate your understanding of a previous failure and how this new plan addresses it.
+3.  **"action"**: If the request requires a tool, use this key. The value should be a dictionary containing the tool to use and the arguments.
+    *   **"thought"**: A brief description of what you are trying to do.
+    *   **"current_goal"**: A concise statement of the specific goal this action aims to achieve. This should be a sub-goal of the overall user request.
+    *   **"tool"**: The name of the tool to use. You **MUST ONLY** use the tools defined in the schema below.
+    *   **"args"**: A dictionary of arguments for the tool.
 
-    **IMPORTANT: Only include steps that are absolutely necessary to fulfill the user's request. Do NOT add extra steps or assume additional actions.**
-
-    **PLANNING RULES:**
-    - **Tool Usage:** You **MUST ONLY** use the tools defined in the schema below. **DO NOT** invent or hallucinate any tool names. If you cannot achieve the goal with the available tools, you must respond with a text message explaining the limitation.
-    - **File System Operations:** To move (`mv`), copy (`cp`), delete (`rm`), or create a directory (`mkdir`), you **MUST** use the `run_shell_command` tool. There are no separate tools for these actions.
-    - **Quoting Paths:** When using `run_shell_command`, you **MUST** enclose all file and directory paths in double quotes (e.g., `cd "My Documents"`, `mv "file.txt"../new dir/"`).
-    - **Package Check:** If you are using a package when using `run_shell_command`, check if the package is installed first. You must install the required packages first if they are not yet installed.
-    - **Critical Actions:** An action is critical **only if it modifies, creates, or deletes files or system state** (e.g., `write_file`, `run_shell_command` with `rm`, `mv`, `mkdir`). Reading or analyzing data (`read_file`, `list_directory`, `classify_image`, `run_shell_command` with `cd`) is **never** critical.
-    - **Placeholders:** The executor can substitute output from previous steps. Use the format `<output_of_step_N>` as a placeholder in a tool's arguments. The executor will replace this with the *entire* output of step N. You will then need to access the `result` key to get the actual data (e.g., `<output_of_step_1>['result']`).
-
-    **Example Plan (Listing, Classifying, Filtering):**
+    **Example Action (List Directory):**
     {json.dumps({
-        "plan": [
-            {
-                "thought": "First, I need to find all the image files in the 'photos' directory.",
-                "tool": "list_directory",
-                "args": {"path": "photos"},
-                "is_critical": False
-            },
-            {
-                "thought": "Now I will classify each image found in the previous step to see if it contains a dog. I will then filter the results to get only the paths of the dog images.",
-                "tool": "classify_image",
-                "args": {"image_path": "<output_of_step_1>['result']", "question": "Is there a dog in this image?"},
-                "is_critical": False
-            },
-            {
-                "thought": "Now I will filter the classified images to get only the ones that contain a dog, and I will extract just the image paths.",
-                "tool": "select_from_list",
-                "args": {"data_list": "<output_of_step_2>", "filter_key": "is_match", "filter_value": True, "return_key": "image_path"},
-                "is_critical": False
-            }
-        ]
+        "action": {
+            "thought": "I need to list the files in the current directory.",
+            "current_goal": "List all files in the current directory.",
+            "tool": "list_directory",
+            "args": {"path": "."}
+        }
     })}
 
-    **Example Plan (Moving Files):**
+    **Example Action (Write File):**
     {json.dumps({
-        "plan": [
-            {
-                "thought": "The user wants to move specific files. I will use the `mv` command via `run_shell_command`.",
-                "tool": "run_shell_command",
-                "args": {"command": "mv file1.txt file2.jpg /new/directory/"},
-                "is_critical": True
-            }
-        ]
+        "action": {
+            "thought": "I need to create a new file named 'report.txt' and write some content into it.",
+            "current_goal": "Create a file named 'report.txt' with specified content.",
+            "tool": "write_file",
+            "args": {"file_path": "report.txt", "content": "This is the content of the report."} 
+        }
     })}
 
 **Available Tools:**
@@ -97,6 +65,55 @@ If you determine the task is impossible with the available tools or requires fur
 
 Now, analyze the user's request and generate the appropriate JSON response.
 """
+
+def get_reflexion_prompt(history: list, observation: dict, current_goal: str, original_user_request: str) -> str:
+    """
+    Generates a prompt for the LLM to reflect on the result of an action.
+    """
+    history_str = "\n".join(history)
+    observation_str = json.dumps(observation, indent=2)
+
+    return f"""You are a ReAct-style agent. You have just performed an action and observed the result.
+The current goal for this action was: {current_goal}
+Your task is to reflect on this observation and decide on the next step. If the observation is from a `run_shell_command`, you should parse the `stdout` to find the relevant information. If the original user request has been fully addressed and completed, you MUST return 'finish'. You have three choices for the 'decision' key in your JSON response:
+
+1.  **"continue"**: If the task is not yet complete and you need to perform another action.
+    *   **"comment"**: A brief explanation of why you are continuing and what you plan to do next.
+    *   **"next_action"**: A dictionary containing the next tool to use and the arguments.
+
+2.  **"finish"**: If the task is complete and you have the final answer for the user.
+    *   **"comment"**: The final answer for the user.
+
+3.  **"error"**: If the last action resulted in an error that you cannot recover from.
+    *   **"comment"**: A brief explanation of the error.
+
+**Example Continue:**
+{json.dumps({
+    "decision": "continue",
+    "comment": "I have listed the files. Now I need to read the content of 'file.txt'.",
+    "next_action": {
+        "thought": "Read the content of 'file.txt'.",
+        "tool": "read_file",
+        "args": {"file_path": "file.txt"}
+    }
+})}
+
+**Example Finish:**
+{json.dumps({
+    "decision": "finish",
+    "comment": "I have successfully created the file 'hello.txt' with the content 'Hello, World!'"
+})}
+
+**Example Error:**
+{json.dumps({
+    "decision": "error",
+    "comment": "The file 'non_existent_file.txt' was not found."
+})}
+
+Now, analyze the observation and generate the appropriate JSON response.
+"""
+
+
 
 def get_final_summary_prompt(plan_results: list) -> str:
     """

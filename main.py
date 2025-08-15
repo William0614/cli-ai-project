@@ -1,8 +1,9 @@
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import asyncio
 import json
-import os
-from ai_core import create_plan, summarize_plan_result
-from executor import execute_plan
+from ai_core import think, reflexion
+from executor import execute_tool
 from utils import Spinner
 import memory_system as memory
 from colorama import init, Fore
@@ -53,78 +54,74 @@ async def main():
         history.append(f"User: {user_input}")
 
         spinner.start()
-        decision = await create_plan(history, current_working_directory)
+        decision = await think(history, current_working_directory)
         spinner.stop()
 
         if "text" in decision:
             ai_response = decision["text"]
             print(Fore.MAGENTA + f"AI: {ai_response}")
             history.append(f"Agent: {ai_response}")
+            continue
 
         elif "save_to_memory" in decision:
             fact_to_save = decision["save_to_memory"]
             memory.save_memory(fact_to_save, {"type": "declarative"})
             print(Fore.GREEN + f"Saved to memory: {fact_to_save}")
+            history.append(f"Agent: Saved to memory: {fact_to_save}")
+            continue
 
-        elif "plan" in decision:
-            current_plan = decision["plan"]
-            MAX_REPLAN_ATTEMPTS = 2 # Define a limit for replanning attempts
+        elif "action" in decision:
+            action = decision["action"]
+            current_goal = action.get("current_goal", "No specific goal provided for this action.") # Extract current_goal
+            
+            MAX_REPLANS = 3
             replan_count = 0
+            
+            while True:
+                spinner.start()
+                observation = await execute_tool(action["tool"], action["args"])
+                spinner.stop()
+                print() # Add newline after spinner stops
 
-            while replan_count <= MAX_REPLAN_ATTEMPTS:
-                if replan_count >= 1:
-                    print(Fore.YELLOW + f"Replanning (replan attempt {replan_count + 1}/{MAX_REPLAN_ATTEMPTS + 1})...")
-                plan_results, plan_halted = await execute_plan(current_plan, history)
+                # Consolidated output
+                output_block = f"""
+{Fore.CYAN}Action: {action['tool']}({action['args']})
+{Fore.YELLOW}Thought: {action['thought']}
+{Fore.BLUE}Current Goal: {current_goal}
+{Fore.GREEN}Observation: {observation}
+"""
+                print(output_block)
+                history.append(f"Agent: Action: {action}, Observation: {observation}")
 
-                if not plan_halted: # Plan executed successfully
-                    print(Fore.GREEN + "Plan completed successfully.")
-                    break # Exit replanning loop
+                is_error = observation.get("status") == "Error"
 
-                else: # Plan failed or was aborted
-                    print(Fore.RED + "Plan execution failed or was aborted.")
-                    replan_count += 1
-                    if replan_count > MAX_REPLAN_ATTEMPTS:
-                        print(Fore.RED + "Maximum replanning attempts reached. Aborting task.")
-                        history.append("Agent: Failed to complete task after multiple replanning attempts.")
-                        break # Exit replanning loop
+                spinner.start()
+                spinner.set_message("Reflecting on the result...")
+                reflection = await reflexion(history, observation, current_goal, history[0]) # Pass original user request
+                spinner.set_message("Thinking...")
+                spinner.stop()
+
+                
+
+                if reflection["decision"] == "finish":
+                    print(Fore.MAGENTA + f"AI: {reflection['comment']}")
+                    history.append(f"Agent: {reflection['comment']}")
+                    break
+                
+                elif reflection["decision"] == "error":
+                    print(Fore.RED + f"Error: {reflection['comment']}")
+                    history.append(f"Agent: Error: {reflection['comment']}")
+                    break
+
+                elif reflection["decision"] == "continue":
+                    if is_error:
+                        replan_count += 1
+                        if replan_count >= MAX_REPLANS:
+                            print(Fore.RED + "Max replan attempts reached. Aborting task.")
+                            history.append("Agent: Max replan attempts reached. Aborting task.")
+                            break
                     
-                    replan_approval = input("Try replan? (Enter/no): ").lower()
-                    if replan_approval != '' and replan_approval != "yes":
-                        break
-                    
-                    print(f"plan results: {plan_results}")
-                    # Add failure context to history for the Planner
-                    failure_message = f"Agent: Previous plan failed. Results: {json.dumps(plan_results)}. Please generate a new plan to achieve the original goal, taking this failure into account."
-                    history.append(failure_message)
-                    print(Fore.YELLOW + "Attempting to replan...")
-
-                    spinner.start()
-                    replan_decision = await create_plan(history, current_working_directory)
-                    spinner.stop()
-
-                    if "plan" in replan_decision:
-                        current_plan = replan_decision["plan"] # Use the new plan for the next attempt
-                        print(Fore.YELLOW + "New plan generated. Retrying...")
-                    elif "text" in replan_decision:
-                        # LLM decided it can't replan or has a direct answer to the failure
-                        ai_response = replan_decision["text"]
-                        print(Fore.MAGENTA + f"AI: {ai_response}")
-                        history.append(f"Agent: {ai_response}")
-                        plan_halted = False # Treat as resolved by text response
-                        break # Exit replanning loop
-                    else:
-                        print(Fore.RED + "Replanning failed to produce a valid plan or text response. Aborting.")
-                        history.append("Agent: Replanning failed to produce a valid plan.")
-                        break # Exit replanning loop
-
-            # Summarize the final outcome (either success or max attempts reached)
-            spinner.start()
-            final_summary = await summarize_plan_result(plan_results) # Summarize the last attempt's results
-            spinner.stop()
-
-            print(Fore.MAGENTA + f"\nAI: {final_summary}")
-            history.append(f"Agent: {final_summary}")
-
+                    action = reflection["next_action"]
         else:
             error_msg = f"Sorry, I received an unexpected decision format: {decision}"
             print(Fore.RED + error_msg)

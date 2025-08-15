@@ -14,26 +14,28 @@ async def execute_tool(tool_name: str, tool_args: dict) -> dict:
 
     if tool_name == "run_shell_command":
         command = tool_args.get("command", "")
-        if command.strip().startswith("cd "):
-            new_path = command.strip()[3:].strip()
-            parsed_path = shlex.split(new_path)
-            new_path = parsed_path[0]
-            if os.path.isabs(new_path):
-                target_path = new_path
-            else:
-                target_path = os.path.join(current_working_directory, new_path)
+        if isinstance(command, str):
+            if command.strip().startswith("cd "):
+                new_path = command.strip()[3:].strip()
+                parsed_path = shlex.split(new_path)
+                new_path = parsed_path[0]
+                if os.path.isabs(new_path):
+                    target_path = new_path
+                else:
+                    target_path = os.path.join(current_working_directory, new_path)
 
-            target_path = os.path.normpath(target_path)
+                target_path = os.path.normpath(target_path)
 
-            if os.path.isdir(target_path):
-                current_working_directory = target_path
-                return {
-                    "tool name": tool_name,
-                    "status": "Success",
-                    "output": f"Changed directory to {current_working_directory}",
-                }
-            else:
-                return {"tool name": tool_name, "status": "Error", "output": f"Directory not found: {new_path}"}
+                if os.path.isdir(target_path):
+                    current_working_directory = target_path
+                    return {
+                        "tool name": tool_name,
+                        "status": "Success",
+                        "output": f"Changed directory to {current_working_directory}",
+                    }
+                else:
+                    return {"tool name": tool_name, "status": "Error", "output": f"Directory not found: {new_path}"}
+            tool_args["command"] = shlex.split(command)
 
         tool_args["directory"] = current_working_directory
 

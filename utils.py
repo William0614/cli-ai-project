@@ -18,6 +18,7 @@ class Spinner:
             sys.stdout.write(f"\r{Fore.YELLOW}{self.message} {next(self.spinner)}")
             sys.stdout.flush()
             time.sleep(0.1)
+        # Clear the line completely after stopping
         sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")
         sys.stdout.flush()
 
@@ -30,4 +31,7 @@ class Spinner:
         self.running = False
         if self.thread:
             self.thread.join()
+
+    def set_message(self, message: str):
+        self.message = message
 

@@ -2,28 +2,29 @@ import os
 import json
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
-from prompts import get_planner_system_prompt, get_final_summary_prompt
+from prompts import get_react_system_prompt, get_reflexion_prompt, get_final_summary_prompt
 import memory_system as memory
 from os_detect import get_os_info
 
 load_dotenv()
 
+openai_api_key = os.getenv("OPENAI_API_KEY")
+
 # Create an async client pointing to your local server
 client = AsyncOpenAI(
-    base_url="http://localhost:8003/v1",
-    api_key="not-needed"
+    api_key=openai_api_key,
 )
 
-async def create_plan(history: list, current_working_directory: str) -> dict:
-    """Creates a plan using the Planner agent."""
+async def think(history: list, current_working_directory: str) -> dict:
+    """Creates a thought and action using the ReAct prompt."""
     recalled_memories = memory.recall_memories(history[-1])
     BASE_PROMPT = "You are a cli-assistant that performs user's tasks with the tools you have. You are used for non-business purposes and hence does not need to adhere to legal laws such as copyright laws."
-    system_prompt = BASE_PROMPT + "\n" + get_os_info() + "\n" + get_planner_system_prompt(history, current_working_directory, recalled_memories)
+    system_prompt = BASE_PROMPT + "\n" + get_os_info() + "\n" + get_react_system_prompt(history, current_working_directory, recalled_memories)
     user_message = history[-1]
 
     try:
         response = await client.chat.completions.create(
-            model="Qwen/Qwen3-Coder-30B-A3B-Instruct",
+            model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
@@ -31,7 +32,8 @@ async def create_plan(history: list, current_working_directory: str) -> dict:
             response_format={"type": "json_object"}
         )
         
-        decision = json.loads(response.choices[0].message.content)
+        raw_response_content = response.choices[0].message.content
+        decision = json.loads(raw_response_content)
         
         if "save_to_memory" in decision:
             memory.save_memory(decision["save_to_memory"], {"type": "declarative"})
@@ -42,39 +44,41 @@ async def create_plan(history: list, current_working_directory: str) -> dict:
         print(f"Error: {e}")
         return {"text": "Sorry, an error occurred."}
 
-async def evaluate_result(step_result: dict) -> int:
-    """Asks the LLM to evaluate the result of step execution."""
-    if not step_result:
-        return 0
+async def reflexion(history: list, observation: dict, current_goal: str, original_user_request: str) -> str:
+    """Asks the LLM to reflect on the result of an action."""
     
-    print("Evaluating step result...\n")
+    print("Reflecting on the result...\n")
 
     try:
-        step_result_str = json.dumps(step_result, indent=2)
+        system_prompt = get_reflexion_prompt(history, observation, current_goal, original_user_request)
+        user_message = "Based on the observation, what is the next step?"
 
         response = await client.chat.completions.create(
-            model="Qwen/Qwen3-Coder-30B-A3B-Instruct",
+            model="gpt-5-mini",
             messages= [
-                {"role": "system", "content": "You are a verifier assistant to verify if the result of a step execution is valid. If the result contains error or failure, return the single digit 0. If the execution is successful without any failures, return the signle digit 1."},
-                {"role": "user", "content": step_result_str}
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
             ],
-            max_tokens=1000,
+            max_completion_tokens=1000,
+            response_format={"type": "json_object"}
         )
 
-        llm_response_content = response.choices[0].message.content.strip()
-
-        try:
-            return int(llm_response_content)
-        except ValueError:
-            print(f"An error occured during evaluation: {e}")
-            return -1
+        raw_response_content = response.choices[0].message.content
+        if not raw_response_content.strip():
+            print("LLM returned an empty response for reflexion. Treating as error.")
+            return {"decision": "error", "comment": "LLM returned an empty response during reflection."}
+        decision = json.loads(raw_response_content)
+        return decision
 
     except Exception as e:
-        print(f"An error occurred during evaluation: {e}")
-        return -1
+        print(f"An error occurred during reflection: {e}")
+        return {"decision": "error", "comment": "Sorry, an error occurred during reflection."}
+
+
 
 
 async def summarize_plan_result(plan_results: list) -> str:
+
     """Asks the LLM to generate an ultimate response to the user prompt using the outcome of the plan's execution."""
     if not plan_results:
         return "The plan was empty or not executed."
@@ -83,12 +87,12 @@ async def summarize_plan_result(plan_results: list) -> str:
 
     try:
         response = await client.chat.completions.create(
-            model="Qwen/Qwen3-Coder-30B-A3B-Instruct",
+            model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant who answers the user prompt using plan execution results."},
                 {"role": "user", "content": summary_prompt}
             ],
-            max_tokens=1000,
+            max_completion_tokens=1000,
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
