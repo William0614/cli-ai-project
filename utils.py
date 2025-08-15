@@ -8,7 +8,7 @@ init(autoreset=True)
 
 class Spinner:
     def __init__(self, message: str):
-        self.spinner = itertools.cycle(["-", "/", "|", "\"])
+        self.spinner = itertools.cycle(["-", "/", "|", "\\"])
         self.message = message
         self.running = False
         self.thread = None
