@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 from prompts import get_react_system_prompt, get_reflexion_prompt, get_final_summary_prompt
 import memory_system as memory
 from os_detect import get_os_info
+import soundfile as sf
+import sounddevice as sd
+import io
 
 load_dotenv()
 
@@ -105,3 +108,33 @@ async def summarize_plan_result(plan_results: list) -> str:
         return response.choices[0].message.content.strip()
     except Exception as e:
         return f"An error occurred during summarization: {e}"
+
+async def speak_text_openai(text: str):
+    """
+    Converts text to speech using OpenAI's TTS API and plays it.
+    """
+    if not text:
+        print("No text to speak.")
+        return
+
+    print(f"Speaking: {text}")
+    try:
+        # Generate the audio stream from the text
+        response = await client.audio.speech.create(
+            model="tts-1",          # "tts-1" is faster, "tts-1-hd" is higher quality
+            voice="nova",           # Choose from 'alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'
+            input=text
+        )
+
+        # The response content is the binary audio data.
+        # We read it into a BytesIO buffer to avoid saving a file to disk.
+        audio_buffer = io.BytesIO(response.content)
+        
+        # Read the audio data from the buffer and play it
+        with sf.SoundFile(audio_buffer, 'r') as sound_file:
+            data = sound_file.read(dtype='float32')
+            sd.play(data, sound_file.samplerate)
+            sd.wait() # Wait until the audio is finished playing
+
+    except Exception as e:
+        print(f"An error occurred during text-to-speech: {e}")

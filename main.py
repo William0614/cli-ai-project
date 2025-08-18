@@ -2,8 +2,9 @@ import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import asyncio
 import json
-from ai_core import think, reflexion
+from ai_core import think, reflexion, speak_text_openai
 from executor import execute_tool
+from speech_to_text import get_voice_input_whisper
 from utils import Spinner
 import memory_system as memory
 from colorama import init, Fore
@@ -18,9 +19,13 @@ async def get_user_input(voice_input_enabled: bool) -> tuple[str, bool]:
     user_input = ""
     if voice_input_enabled:
         print(Fore.CYAN + "\nListening for your command (voice enabled)...")
-        # user_input = get_voice_input_whisper(duration=5)
+        user_input = get_voice_input_whisper(duration=5)
         if user_input:
             print(f"> You said: {user_input}")
+            if user_input.lower() in ["stop voice input.", "disable voice input.", "switch to text input."]:
+                voice_input_enabled = False
+                print(Fore.GREEN + "Voice input is now disabled. Switching to text input.")
+                return "", voice_input_enabled # Return empty string and updated flag
         else:
             print(Fore.YELLOW + "No voice input detected, please use text input.")
             user_input = input("> ")

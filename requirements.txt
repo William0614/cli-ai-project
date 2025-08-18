@@ -8,3 +8,6 @@ faiss-cpu
 distro
 terminal-bench
 aiofiles
+torch
+torchaudio
+soundfile
