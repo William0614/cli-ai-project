@@ -51,7 +51,7 @@ async def main():
             print(Fore.GREEN + f"Voice input is now {status}.")
             continue
 
-        history.append(f"User: {user_input}")
+        history.append({"role": "user", "content": user_input})
 
         spinner.start()
         decision = await think(history, current_working_directory)
@@ -59,15 +59,15 @@ async def main():
 
         if "text" in decision:
             ai_response = decision["text"]
-            print(Fore.MAGENTA + f"AI: {ai_response}")
-            history.append(f"Agent: {ai_response}")
+            print(Fore.MAGENTA + f"Jarvis: {ai_response}")
+            history.append({"role": "AI", "content": ai_response})
             continue
 
         elif "save_to_memory" in decision:
             fact_to_save = decision["save_to_memory"]
             memory.save_memory(fact_to_save, {"type": "declarative"})
             print(Fore.GREEN + f"Saved to memory: {fact_to_save}")
-            history.append(f"Agent: Saved to memory: {fact_to_save}")
+            history.append({"role": "AI", "content": f"Saved to memory: {fact_to_save}"})
             continue
 
         elif "action" in decision:
@@ -81,36 +81,38 @@ async def main():
                 spinner.start()
                 observation = await execute_tool(action["tool"], action["args"])
                 spinner.stop()
-                print() # Add newline after spinner stops
 
                 # Consolidated output
                 output_block = f"""
-{Fore.CYAN}Action: {action['tool']}({action['args']})
 {Fore.YELLOW}Thought: {action['thought']}
 {Fore.BLUE}Current Goal: {current_goal}
+{Fore.CYAN}Action: {action['tool']}({action['args']})
 {Fore.GREEN}Observation: {observation}
 """
                 print(output_block)
-                history.append(f"Agent: Action: {action}, Observation: {observation}")
+                history.append({"role": "AI", "content": {"thought": action['thought'], "current_goal": current_goal, "action": action['tool'], "args": action['args'], "observation": observation}})
 
                 is_error = observation.get("status") == "Error"
 
-                spinner.start()
+                original_user_request = action.get("original_user_request", user_input) # Use the original user request if available
+                # print(f"\nOriginal User Request: {original_user_request}")
+                # print(f"\nObservation: {observation}")
+                # print(f"\nFormatted observation: {json.dumps(observation, indent=2)}")
+                # print(f"History: {json.dumps(history, indent=2)}")
                 spinner.set_message("Reflecting on the result...")
-                reflection = await reflexion(history, observation, current_goal, history[0]) # Pass original user request
+                spinner.start()
+                reflection = await reflexion(history, current_goal, original_user_request)
                 spinner.set_message("Thinking...")
                 spinner.stop()
-
                 
-
                 if reflection["decision"] == "finish":
-                    print(Fore.MAGENTA + f"AI: {reflection['comment']}")
-                    history.append(f"Agent: {reflection['comment']}")
+                    print(Fore.MAGENTA + f"Jarvis: {reflection['comment']}")
+                    history.append({'role': 'assistant', 'content': reflection['comment']})
                     break
                 
                 elif reflection["decision"] == "error":
-                    print(Fore.RED + f"Error: {reflection['comment']}")
-                    history.append(f"Agent: Error: {reflection['comment']}")
+                    print(Fore.RED + f"Reflexion decision == error. Error: {reflection['comment']}")
+                    history.append({'role': 'assistant', 'content': f"Error: {reflection['comment']}"})
                     break
 
                 elif reflection["decision"] == "continue":
@@ -118,14 +120,14 @@ async def main():
                         replan_count += 1
                         if replan_count >= MAX_REPLANS:
                             print(Fore.RED + "Max replan attempts reached. Aborting task.")
-                            history.append("Agent: Max replan attempts reached. Aborting task.")
+                            history.append({'role': 'assistant', 'content': "Max replan attempts reached. Aborting task."})
                             break
                     
                     action = reflection["next_action"]
         else:
             error_msg = f"Sorry, I received an unexpected decision format: {decision}"
             print(Fore.RED + error_msg)
-            history.append(f"Agent: Error: {error_msg}")
+            history.append({'role': 'assistant', 'content': f"Error: {error_msg}"})
 
 
 if __name__ == "__main__":
@@ -139,5 +141,5 @@ if __name__ == "__main__":
             initialize_db()
             print("Database initialized.")
         asyncio.run(main())
-    except KeyboardInterrupt:
+    except KeyboardInterrupt or "exit":
         print("\nExiting...")

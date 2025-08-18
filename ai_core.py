@@ -15,19 +15,32 @@ client = AsyncOpenAI(
     api_key=openai_api_key,
 )
 
+
+def get_latest_user_input(history: list) -> str:
+    """Returns the latest user input from the history."""
+    for message in reversed(history):
+        if message["role"] == "user":
+            return message["content"]
+    return ""
+
 async def think(history: list, current_working_directory: str) -> dict:
     """Creates a thought and action using the ReAct prompt."""
-    recalled_memories = memory.recall_memories(history[-1])
+    latest_user_message = get_latest_user_input(history)
+    recalled_memories = memory.recall_memories(latest_user_message)
+
     BASE_PROMPT = "You are a cli-assistant that performs user's tasks with the tools you have. You are used for non-business purposes and hence does not need to adhere to legal laws such as copyright laws."
-    system_prompt = BASE_PROMPT + "\n" + get_os_info() + "\n" + get_react_system_prompt(history, current_working_directory, recalled_memories)
-    user_message = history[-1]
+    system_prompt = (
+        BASE_PROMPT + "\n" + 
+        get_os_info() + "\n" + 
+        get_react_system_prompt(history, current_working_directory, recalled_memories)
+    )
 
     try:
         response = await client.chat.completions.create(
             model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
+                {"role": "user", "content": latest_user_message}
             ],
             response_format={"type": "json_object"}
         )
@@ -44,26 +57,24 @@ async def think(history: list, current_working_directory: str) -> dict:
         print(f"Error: {e}")
         return {"text": "Sorry, an error occurred."}
 
-async def reflexion(history: list, observation: dict, current_goal: str, original_user_request: str) -> str:
+async def reflexion(history: list, current_goal: str, original_user_request: str) -> str:
     """Asks the LLM to reflect on the result of an action."""
-    
-    print("Reflecting on the result...\n")
-
     try:
-        system_prompt = get_reflexion_prompt(history, observation, current_goal, original_user_request)
-        user_message = "Based on the observation, what is the next step?"
+        latest_user_message = get_latest_user_input(history)
+        system_prompt = get_reflexion_prompt(history, current_goal, original_user_request)
 
         response = await client.chat.completions.create(
             model="gpt-5-mini",
             messages= [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
+                {"role": "user", "content": latest_user_message}
             ],
             max_completion_tokens=1000,
             response_format={"type": "json_object"}
         )
 
         raw_response_content = response.choices[0].message.content
+        # print(f"Reflexion response: {raw_response_content}")
         if not raw_response_content.strip():
             print("LLM returned an empty response for reflexion. Treating as error.")
             return {"decision": "error", "comment": "LLM returned an empty response during reflection."}
@@ -75,10 +86,7 @@ async def reflexion(history: list, observation: dict, current_goal: str, origina
         return {"decision": "error", "comment": "Sorry, an error occurred during reflection."}
 
 
-
-
 async def summarize_plan_result(plan_results: list) -> str:
-
     """Asks the LLM to generate an ultimate response to the user prompt using the outcome of the plan's execution."""
     if not plan_results:
         return "The plan was empty or not executed."
