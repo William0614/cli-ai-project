@@ -26,7 +26,7 @@ def get_latest_user_input(history: list) -> str:
             return message["content"]
     return ""
 
-async def think(history: list, current_working_directory: str) -> dict:
+async def think(history: list, current_working_directory: str, voice_input_enabled: bool) -> dict:
     """Creates a thought and action using the ReAct prompt."""
     latest_user_message = get_latest_user_input(history)
     recalled_memories = memory.recall_memories(latest_user_message)
@@ -35,7 +35,7 @@ async def think(history: list, current_working_directory: str) -> dict:
     system_prompt = (
         BASE_PROMPT + "\n" + 
         get_os_info() + "\n" + 
-        get_react_system_prompt(history, current_working_directory, recalled_memories)
+        get_react_system_prompt(history, current_working_directory, recalled_memories, voice_input_enabled)
     )
 
     try:
@@ -60,11 +60,11 @@ async def think(history: list, current_working_directory: str) -> dict:
         print(f"Error: {e}")
         return {"text": "Sorry, an error occurred."}
 
-async def reflexion(history: list, current_goal: str, original_user_request: str) -> str:
+async def reflexion(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool) -> str:
     """Asks the LLM to reflect on the result of an action."""
     try:
         latest_user_message = get_latest_user_input(history)
-        system_prompt = get_reflexion_prompt(history, current_goal, original_user_request)
+        system_prompt = get_reflexion_prompt(history, current_goal, original_user_request, voice_input_enabled)
 
         response = await client.chat.completions.create(
             model="gpt-5-mini",
@@ -117,7 +117,7 @@ async def speak_text_openai(text: str):
         print("No text to speak.")
         return
 
-    print(f"Speaking: {text}")
+    print(f"Jarvis: {text}")
     try:
         # Generate the audio stream from the text
         response = await client.audio.speech.create(
@@ -138,3 +138,56 @@ async def speak_text_openai(text: str):
 
     except Exception as e:
         print(f"An error occurred during text-to-speech: {e}")
+
+
+async def classify_intent(user_input: str) -> str:
+    """
+    Uses a lightweight LLM prompt to determine if the user wants to exit.
+    This is optimized for speed and token efficiency.
+    """
+    # This prompt is highly focused on a single binary question.
+    system_prompt = """You are an assistant that determines if the user wants to end the conversation.
+Respond with only 'yes' or 'no' in lowercase.
+
+---
+Examples:
+
+User: "goodbye"
+Assistant: yes
+
+User: "shut down now"
+Assistant: yes
+
+User: "that's all, I'm done"
+Assistant: yes
+
+User: "list all the files in my documents folder"
+Assistant: no
+
+User: "what is the capital of France?"
+Assistant: no
+"""
+
+    try:
+        response = await client.chat.completions.create(
+            model="gpt-5-nano", 
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_input}
+            ],
+            max_completion_tokens=150,
+        )
+        
+        decision = response.choices[0].message.content.strip().lower()
+        
+        # The logic is now a simple binary check.
+        if decision == 'yes':
+            return 'exit_program'
+        else:
+            # If the answer is 'no' or anything else, it's a general task.
+            return 'general_task'
+            
+    except Exception as e:
+        print(f"Error during intent classification: {e}")
+        # Safest to assume the user wants to continue if the check fails.
+        return "general_task"

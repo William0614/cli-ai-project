@@ -25,7 +25,7 @@ except Exception as e:
     print("Please check your internet connection and PyTorch installation.")
     vad_model = None
 
-def get_voice_input_whisper(duration=5, samplerate=16000) -> Optional[str]:
+def get_voice_input_whisper(samplerate=16000) -> Optional[str]:
 
     if not vad_model:
         print("VAD model is not available. Please check your setup.")
@@ -45,7 +45,7 @@ def get_voice_input_whisper(duration=5, samplerate=16000) -> Optional[str]:
     is_recording = False
     silence_counter = 0
 
-    print(Fore.YELLOW + f"Listening... (Speak to start recording)")
+    print(Fore.CYAN + f"Listening... (Speak to start recording)")
 
     try:
         with sd.InputStream(samplerate=samplerate, channels=1, dtype='float32', blocksize=chunk_size) as stream:

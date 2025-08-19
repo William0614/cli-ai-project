@@ -2,7 +2,7 @@ import json
 from typing import List, Dict, Any
 from tools import tools_schema
 
-def get_react_system_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]]) -> str:
+def get_react_system_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]], voice_input_enabled: bool) -> str:
     """
     Returns the system prompt for the ReAct agent.
     This prompt instructs the LLM to create a single thought and action.
@@ -13,9 +13,15 @@ def get_react_system_prompt(history: list, current_working_directory: str, recal
     if recalled_memories:
         memories_list = [f"- {m['content']} (timestamp: {m['timestamp']})" for m in recalled_memories]
         memories_str = "\n".join(memories_list)
+    if voice_input_enabled:
+        persona = "You are voice enabled. You interact with the user by speaking aloud. When you provide information or ask a question, you are speaking directly to them."
+    else:
+        persona = "You interact with the user through command line text interface."
 
     return f"""You are an expert autonomous agent that functions as a ReAct-style agent.
 Your primary role is to analyze a user's request and the conversation history, and then decide on the single next best action to take.
+
+{persona}
 
 **Current Working Directory:** {current_working_directory}
 
@@ -71,13 +77,20 @@ Based on the user's latest request and the conversation history, generate a JSON
 Now, analyze the user's request and generate the appropriate JSON response.
 """
 
-def get_reflexion_prompt(history: list, current_goal: str, original_user_request: str) -> str:
+def get_reflexion_prompt(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool) -> str:
     """
     Generates a prompt for the LLM to reflect on the result of an action.
     """
     history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
 
+    if voice_input_enabled:
+        persona = "You are voice enabled."
+    else:
+        persona = "You are text-based."
+
     return f"""You are a ReAct-style agent. You have just performed an action and observed the result.
+
+{persona}
 
 **Current Goal:**
 {current_goal}
