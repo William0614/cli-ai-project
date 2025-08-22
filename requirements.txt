@@ -11,3 +11,5 @@ aiofiles
 torch
 torchaudio
 soundfile
+Pillow
+scipy

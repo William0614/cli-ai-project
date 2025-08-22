@@ -4,6 +4,7 @@ import aiofiles
 import os
 from typing import Any, Optional
 from image_tools import classify_image
+from vision_tools import find_similar_images
 
 # --- 1. ASYNC TOOL IMPLEMENTATIONS ---
 
@@ -112,6 +113,7 @@ available_tools = {
     "list_directory": list_directory,
     "classify_image": classify_image,
     "select_from_list": select_from_list,
+    "find_similar_images": find_similar_images
 }
 
 # --- 3. TOOL SCHEMA ---
@@ -215,5 +217,21 @@ tools_schema = [
             }
         }
     },
+    {
+        "type": "function", 
+        "function": {
+            "name": "find_similar_images",
+            "description": "Finds the most visually similar images to a source image within a directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_path": {"type": "string", "description": "The absolute path to the source image file."},
+                    "search_directory": {"type": "string", "description": "The directory to search for similar images."},
+                    "top_k": {"type": "integer", "description": "The number of similar images to return, default is 5."}
+                },
+                "required": ["source_path", "search_directory"]
+            }
+        }
+    }
 ]
 
