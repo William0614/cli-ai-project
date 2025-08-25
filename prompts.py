@@ -71,6 +71,22 @@ Based on the user's latest request and the conversation history, generate a JSON
         }
     })}
 
+    **Example Action (Find Similar Images):**
+    {json.dumps({
+        "original_user_request": "Find similar images to the first image in the images folder.",
+        "action": {
+            "thought": "I need to find images visually similar to 'image/first_image.jpg' in the images folder.",
+            "current_goal": "Find the top 5 similar images.",
+            "tool": "find_similar_images",
+            "args": {
+                "image_path": "image/first_image.jpg",
+                "search_directory": "image",
+                "top_k": 5,
+                "threshold": 0.5
+            }
+        }
+    })}
+
 **Available Tools:**
 {json.dumps(tools_schema, indent=2)}
 

@@ -117,11 +117,12 @@ async def main():
                 # print(f"\nObservation: {observation}")
                 # print(f"\nFormatted observation: {json.dumps(observation, indent=2)}")
                 # print(f"History: {json.dumps(history, indent=2)}")
+                spinner.stop()
                 spinner.set_message("Reflecting on the result...")
                 spinner.start()
                 reflection = await reflexion(history, current_goal, original_user_request, voice_input_enabled)
-                spinner.set_message("Thinking...")
                 spinner.stop()
+                spinner.set_message("Thinking...")
                 
                 if reflection["decision"] == "finish":
                     if voice_input_enabled:

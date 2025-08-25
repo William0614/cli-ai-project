@@ -29,7 +29,10 @@ async def run_shell_command(command: list, directory: Optional[str] = None) -> d
         return {"error": str(e)}
 
 async def read_file(file_path: str, offset: Optional[int] = None, limit: Optional[int] = None) -> dict:
-    """Reads a file asynchronously and returns its content, with optional line-based slicing."""
+    """
+    Reads a text-based file asynchronously and returns its content, with optional line-based slicing.
+    **DO NOT** use this tool to non text-based files.
+    """
     if offset is not None and offset < 0:
         return {"error": "Offset must be a non-negative number."}
     if limit is not None and limit <= 0:
@@ -49,17 +52,21 @@ async def read_file(file_path: str, offset: Optional[int] = None, limit: Optiona
                 return {"result": {"content": content}}
     except FileNotFoundError:
         return {"error": f"File not found at {file_path}"}
+    except UnicodeDecodeError:
+        return {"error": f"Cannot read file at {file_path}. This is not a text-based file."}
     except Exception as e:
         return {"error": str(e)}
 
 async def write_file(file_path: str, content: str) -> dict:
-    """Writes to a file asynchronously and returns a success status."""
+    """Writes to a text-based file asynchronously and returns a success status."""
     if not isinstance(content, str):
         content = content['stdout']
     try:
         async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
             await f.write(content)
         return {"result": "success"}
+    except UnicodeDecodeError:
+        return {"error": f"Cannot write file at {file_path}. This is not a text-based file."}
     except Exception as e:
         return {"error": str(e)}
 
@@ -137,11 +144,11 @@ tools_schema = [
         "type": "function",
         "function": {
             "name": "read_file",
-            "description": "Reads the content of a file, optionally from a specific line offset and for a certain number of lines.",
+            "description": "Reads the content of a text-based file, optionally from a specific line offset and for a certain number of lines. NEVER use this for image files (.jpg, .png, .webp, .avif, etc.) - use image-specific tools instead.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "file_path": {"type": "string", "description": "The absolute path to the file."},
+                    "file_path": {"type": "string", "description": "The absolute path to the TEXT file (not images)."},
                     "offset": {"type": "integer", "description": "The 0-based line number to start reading from."},
                     "limit": {"type": "integer", "description": "The maximum number of lines to read."}
                 },
@@ -153,7 +160,7 @@ tools_schema = [
         "type": "function",
         "function": {
             "name": "write_file",
-            "description": "Writes content to a file.",
+            "description": "Writes content to a text-basedfile.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -225,11 +232,12 @@ tools_schema = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "source_path": {"type": "string", "description": "The absolute path to the source image file."},
-                    "search_directory": {"type": "string", "description": "The directory to search for similar images."},
-                    "top_k": {"type": "integer", "description": "The number of similar images to return, default is 5."}
+                    "image_path": {"type": "string", "description": "The absolute path to the source image file. MUST use 'image_path' as the argument name."},
+                    "search_directory": {"type": "string", "description": "The directory to search for similar images. MUST use 'search_directory' as the argument name."},
+                    "top_k": {"type": "integer", "description": "The number of similar images to return, default is 5."},
+                    "threshold": {"type": "float", "description": "The similarity threshold (0 to 1) for considering images as similar, default is 0.5."}
                 },
-                "required": ["source_path", "search_directory"]
+                "required": ["image_path", "search_directory"]
             }
         }
     }

@@ -13,3 +13,5 @@ torchaudio
 soundfile
 Pillow
 scipy
+torchvision
+git+https://github.com/huggingface/transformers
