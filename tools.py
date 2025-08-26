@@ -2,8 +2,9 @@
 import asyncio
 import aiofiles
 import os
+import inspect
 from typing import Any, Optional
-from image_tools import classify_image
+from image_classifier import describe_image
 from vision_tools import find_similar_images
 
 # --- 1. ASYNC TOOL IMPLEMENTATIONS ---
@@ -28,10 +29,10 @@ async def run_shell_command(command: list, directory: Optional[str] = None) -> d
     except Exception as e:
         return {"error": str(e)}
 
-async def read_file(file_path: str, offset: Optional[int] = None, limit: Optional[int] = None) -> dict:
+async def read_text_file(file_path: str, offset: Optional[int] = None, limit: Optional[int] = None) -> dict:
     """
     Reads a text-based file asynchronously and returns its content, with optional line-based slicing.
-    **DO NOT** use this tool to non text-based files.
+    Only works with text files (.txt, .py, .js, .html, .css, .md, etc.). Cannot read binary files like PDFs, images, or executables.
     """
     if offset is not None and offset < 0:
         return {"error": "Offset must be a non-negative number."}
@@ -115,13 +116,41 @@ def select_from_list(data_list: list, index: Optional[int] = None, filter_key: O
 # --- 2. TOOL REGISTRY ---
 available_tools = {
     "run_shell_command": run_shell_command,
-    "read_file": read_file,
+    "read_text_file": read_text_file,
     "write_file": write_file,
     "list_directory": list_directory,
-    "classify_image": classify_image,
-    "select_from_list": select_from_list,
+    "describe_image": describe_image,
     "find_similar_images": find_similar_images
 }
+
+# --- TOOL DOCUMENTATION EXTRACTION ---
+def get_tool_docstrings() -> str:
+    """
+    Extracts and formats docstrings from all available tools.
+    This provides detailed implementation details to the LLM.
+    """
+    docstring_info = []
+    
+    for tool_name, tool_func in available_tools.items():
+        try:
+            # Get the function signature and docstring
+            signature = inspect.signature(tool_func)
+            docstring = inspect.getdoc(tool_func)
+            
+            if docstring:
+                # Format the tool documentation
+                tool_doc = f"""
+=== {tool_name.upper()} ===
+Function: {tool_name}{signature}
+Documentation:
+{docstring}
+"""
+                docstring_info.append(tool_doc)
+        except Exception as e:
+            # Fallback if inspection fails
+            docstring_info.append(f"=== {tool_name.upper()} ===\nDocumentation unavailable: {e}")
+    
+    return "\n".join(docstring_info)
 
 # --- 3. TOOL SCHEMA ---
 tools_schema = [
@@ -143,12 +172,12 @@ tools_schema = [
     {
         "type": "function",
         "function": {
-            "name": "read_file",
-            "description": "Reads the content of a text-based file, optionally from a specific line offset and for a certain number of lines. NEVER use this for image files (.jpg, .png, .webp, .avif, etc.) - use image-specific tools instead.",
+            "name": "read_text_file",
+            "description": "Reads the content of text-based files only (.txt, .py, .js, .html, .css, .md, .json, etc.). Cannot read binary files like PDFs, images, or executables. Use image-specific tools for image files.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "file_path": {"type": "string", "description": "The absolute path to the TEXT file (not images)."},
+                    "file_path": {"type": "string", "description": "The absolute path to the TEXT file (never use for images, PDFs, or other binary files)."},
                     "offset": {"type": "integer", "description": "The 0-based line number to start reading from."},
                     "limit": {"type": "integer", "description": "The maximum number of lines to read."}
                 },
@@ -188,13 +217,13 @@ tools_schema = [
     {
         "type": "function",
         "function": {
-            "name": "classify_image",
-            "description": "Classifies an image or answers a question about its content using a local multimodal model.",
+            "name": "describe_image",
+            "description": "Analyzes and describes the content of image files (.jpg, .png, .webp, .avif, etc.). Can answer questions about what's in the image, identify objects, people, text, or analyze visual content.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "image_path": {"type": "string", "description": "The absolute path to the image file."},
-                    "question": {"type": "string", "description": "The question to ask about the image, e.g., 'What is in this image?', 'Is there a dog?'. This tool will also return an 'is_match' boolean if the question is a yes/no type."}
+                    "question": {"type": "string", "description": "The question to ask about the image, e.g., 'What is in this image?', 'Is there a dog?', 'Describe this photo'. Returns an 'is_match' boolean for yes/no questions."}
                 },
                 "required": ["image_path", "question"]
             }
@@ -228,14 +257,26 @@ tools_schema = [
         "type": "function", 
         "function": {
             "name": "find_similar_images",
-            "description": "Finds the most visually similar images to a source image within a directory.",
+            "description": "Finds images that look visually similar to a source image by comparing visual features. CRITICAL: Use EXACT parameter names as specified below - any deviation will cause errors.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "image_path": {"type": "string", "description": "The absolute path to the source image file. MUST use 'image_path' as the argument name."},
-                    "search_directory": {"type": "string", "description": "The directory to search for similar images. MUST use 'search_directory' as the argument name."},
-                    "top_k": {"type": "integer", "description": "The number of similar images to return, default is 5."},
-                    "threshold": {"type": "float", "description": "The similarity threshold (0 to 1) for considering images as similar, default is 0.5."}
+                    "image_path": {
+                        "type": "string", 
+                        "description": "The absolute path to the source image file."
+                    },
+                    "search_directory": {
+                        "type": "string", 
+                        "description": "The directory to search for similar images."
+                    },
+                    "top_k": {
+                        "type": "integer", 
+                        "description": "Number of similar images to return (default: 5)."
+                    },
+                    "threshold": {
+                        "type": "float", 
+                        "description": "Similarity threshold 0-1 (default: 0.5)."
+                    }
                 },
                 "required": ["image_path", "search_directory"]
             }

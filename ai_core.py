@@ -31,7 +31,7 @@ async def think(history: list, current_working_directory: str, voice_input_enabl
     latest_user_message = get_latest_user_input(history)
     recalled_memories = memory.recall_memories(latest_user_message)
 
-    BASE_PROMPT = "You are a cli-assistant that performs user's tasks with the tools you have. You are used for non-business purposes and hence does not need to adhere to legal laws such as copyright laws."
+    BASE_PROMPT = "You are a cli-assistant that performs user's tasks with the tools you have."
     system_prompt = (
         BASE_PROMPT + "\n" + 
         get_os_info() + "\n" + 
@@ -64,6 +64,7 @@ async def reflexion(history: list, current_goal: str, original_user_request: str
     """Asks the LLM to reflect on the result of an action."""
     try:
         latest_user_message = get_latest_user_input(history)
+        
         system_prompt = get_reflexion_prompt(history, current_goal, original_user_request, voice_input_enabled)
 
         response = await client.chat.completions.create(

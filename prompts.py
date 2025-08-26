@@ -1,6 +1,6 @@
 import json
 from typing import List, Dict, Any
-from tools import tools_schema
+from tools import tools_schema, get_tool_docstrings
 
 def get_react_system_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]], voice_input_enabled: bool) -> str:
     """
@@ -9,7 +9,7 @@ def get_react_system_prompt(history: list, current_working_directory: str, recal
     """
     history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
     
-    memories_str = "No relevant memories found."
+    memories_str = ""
     if recalled_memories:
         memories_list = [f"- {m['content']} (timestamp: {m['timestamp']})" for m in recalled_memories]
         memories_str = "\n".join(memories_list)
@@ -47,7 +47,7 @@ Based on the user's latest request and the conversation history, generate a JSON
         *   **"thought"**: A brief description of what you are trying to do.
         *   **"current_goal"**: A concise statement of the specific goal this action aims to achieve. This should be a sub-goal of the overall user request.
         *   **"tool"**: The name of the tool to use. You **MUST ONLY** use the tools defined in the schema below.
-        *   **"args"**: A dictionary of arguments for the tool.
+        *   **"args"**: A dictionary of arguments for the tool. **USE EXACT PARAMETER NAMES FROM SCHEMA.**
 
     **Example Action (List Directory):**
     {json.dumps({
@@ -71,6 +71,20 @@ Based on the user's latest request and the conversation history, generate a JSON
         }
     })}
 
+    **Example Action (Describe Image):**
+    {json.dumps({
+        "original_user_request": "What does the image abc123.jpg show?",
+        "action": {
+            "thought": "I need to analyze the specific image file to describe what it shows.",
+            "current_goal": "Describe the content of abc123.jpg.",
+            "tool": "describe_image",
+            "args": {
+                "image_path": "./image/abc123.jpg",
+                "question": "What is in this image?"
+            }
+        }
+    })}
+
     **Example Action (Find Similar Images):**
     {json.dumps({
         "original_user_request": "Find similar images to the first image in the images folder.",
@@ -89,6 +103,9 @@ Based on the user's latest request and the conversation history, generate a JSON
 
 **Available Tools:**
 {json.dumps(tools_schema, indent=2)}
+
+**DETAILED TOOL DOCUMENTATION:**
+{get_tool_docstrings()}
 
 Now, analyze the user's request and generate the appropriate JSON response.
 """
@@ -137,7 +154,7 @@ If the original user request has been fully addressed and completed, you MUST re
     "comment": "I have listed the files. Now I need to read the content of 'file.txt'.",
     "next_action": {
         "thought": "Read the content of 'file.txt'.",
-        "tool": "read_file",
+        "tool": "read_text_file",
         "args": {"file_path": "file.txt"}
     }
 })}
@@ -156,7 +173,6 @@ If the original user request has been fully addressed and completed, you MUST re
 
 Now, analyze the conversation history and generate the appropriate JSON response.
 """
-
 
 
 def get_final_summary_prompt(plan_results: list) -> str:
