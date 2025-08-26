@@ -92,6 +92,25 @@ async def main():
             replan_count = 0
             
             while True:
+                # Check if action is marked as critical and requires user confirmation
+                if action.get("is_critical", False):
+                    # print(f"Tool: {action['tool']}")
+                    # print(f"Args: {action['args']}")
+                    print(Fore.CYAN + f"Thought: {action['thought']}")
+                    print(Fore.RED + "Critical Action")
+                    while True:
+                        response = input(Fore.YELLOW + "Do you want to proceed? (yes/no): ").strip().lower()
+                        if response in ['yes', 'y']:
+                            break
+                        elif response in ['no', 'n']:
+                            print("Operation cancelled by user.")
+                            break
+                        else:
+                            print("Please answer 'yes' or 'no'")
+                    
+                    if response in ['no', 'n']:
+                        break  # Exit the action loop
+                
                 spinner.start()
                 observation = await execute_tool(action["tool"], action["args"])
                 spinner.stop()

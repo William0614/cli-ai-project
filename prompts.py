@@ -48,6 +48,11 @@ Based on the user's latest request and the conversation history, generate a JSON
         *   **"current_goal"**: A concise statement of the specific goal this action aims to achieve. This should be a sub-goal of the overall user request.
         *   **"tool"**: The name of the tool to use. You **MUST ONLY** use the tools defined in the schema below.
         *   **"args"**: A dictionary of arguments for the tool. **USE EXACT PARAMETER NAMES FROM SCHEMA.**
+        *   **"is_critical"**: (REQUIRED) A boolean field that determines if user confirmation is needed before execution.
+            **Determining `is_critical`:**
+            *   `write_file`: Always `true`.
+            *   `run_shell_command`: `true` if the command modifies the system or data (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`, `git commit`, `git push`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`, `git status`, `git log`).
+            *   All other tools (`read_file`, `list_directory`, `describe_image`, `find_similar_images`): Always `false`.
 
     **Example Action (List Directory):**
     {json.dumps({
@@ -56,7 +61,8 @@ Based on the user's latest request and the conversation history, generate a JSON
             "thought": "I need to list the files in the current directory.",
             "current_goal": "List all files in the current directory.",
             "tool": "list_directory",
-            "args": {"path": "."}
+            "args": {"path": "."},
+            "is_critical": False
         }
     })}
 
@@ -67,7 +73,20 @@ Based on the user's latest request and the conversation history, generate a JSON
             "thought": "I need to create a new file named 'report.txt' and write some content into it.",
             "current_goal": "Create a file named 'report.txt' with specified content.",
             "tool": "write_file",
-            "args": {"file_path": "report.txt", "content": "This is the content of the report."} 
+            "args": {"file_path": "report.txt", "content": "This is the content of the report."},
+            "is_critical": True
+        }
+    })}
+
+    **Example Action (Delete File - CRITICAL):**
+    {json.dumps({
+        "original_user_request": "Please delete the old_file.txt",
+        "action": {
+            "thought": "I need to delete the file 'old_file.txt' as requested.",
+            "current_goal": "Delete old_file.txt from the system.",
+            "tool": "run_shell_command",
+            "args": {"command": "rm old_file.txt"},
+            "is_critical": True
         }
     })}
 
@@ -81,7 +100,8 @@ Based on the user's latest request and the conversation history, generate a JSON
             "args": {
                 "image_path": "./image/abc123.jpg",
                 "question": "What is in this image?"
-            }
+            },
+            "is_critical": False
         }
     })}
 
@@ -97,7 +117,8 @@ Based on the user's latest request and the conversation history, generate a JSON
                 "search_directory": "image",
                 "top_k": 5,
                 "threshold": 0.5
-            }
+            },
+            "is_critical": False
         }
     })}
 
@@ -139,7 +160,10 @@ If the original user request has been fully addressed and completed, you MUST re
 
 1.  **"continue"**: If the task is not yet complete and you need to perform another action.
     *   **"comment"**: A brief explanation of why you are continuing and what you plan to do next.
-    *   **"next_action"**: A dictionary containing the next tool to use and the arguments.
+    *   **"next_action"**: A dictionary containing the next tool to use and the arguments. **MUST include "is_critical" field:**
+        *   `write_file`: Always `true`.
+        *   `run_shell_command`: `true` if the command modifies the system or data (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`, `git commit`, `git push`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`, `git status`, `git log`).
+        *   All other tools (`read_file`, `list_directory`, `describe_image`, `find_similar_images`): Always `false`.
 
 2.  **"finish"**: If the task is complete and you have the final answer for the user.
     *   **"comment"**: The final answer for the user.
@@ -154,7 +178,8 @@ If the original user request has been fully addressed and completed, you MUST re
     "next_action": {
         "thought": "Read the content of 'file.txt'.",
         "tool": "read_text_file",
-        "args": {"file_path": "file.txt"}
+        "args": {"file_path": "file.txt"},
+        "is_critical": False
     }
 })}
 
@@ -220,7 +245,8 @@ Your task is to analyze the error and decide what to do next. You have three cho
         {{
             "thought": "explanation of what you're trying to do",
             "tool": "tool_name_here",
-            "args": {{"parameter1": "value1", "parameter2": "value2"}}
+            "args": {{"parameter1": "value1", "parameter2": "value2"}},
+            "is_critical": true/false (true for write_file, rm/delete commands; false for read/list operations)
         }}
 
 2.  **"finish"**: If you cannot complete the task with available tools.
