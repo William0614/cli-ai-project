@@ -104,8 +104,7 @@ Based on the user's latest request and the conversation history, generate a JSON
 **Available Tools:**
 {json.dumps(tools_schema, indent=2)}
 
-**DETAILED TOOL DOCUMENTATION:**
-{get_tool_docstrings()}
+**CRITICAL: Use ONLY the tools listed above. For images use 'describe_image' and 'find_similar_images'.**
 
 Now, analyze the user's request and generate the appropriate JSON response.
 """
@@ -172,6 +171,65 @@ If the original user request has been fully addressed and completed, you MUST re
 })}
 
 Now, analyze the conversation history and generate the appropriate JSON response.
+"""
+
+def get_reflexion_prompt_with_tools(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool, error_observation: str, tool_docs: str) -> str:
+    """
+    Enhanced reflexion prompt that includes detailed tool documentation when tool errors are detected.
+    """
+    history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
+
+    if voice_input_enabled:
+        persona = "You are voice enabled."
+    else:
+        persona = "You are text-based."
+
+    return f"""You are a ReAct-style agent. You have just performed an action that resulted in a TOOL ERROR.
+
+{persona}
+
+**Current Goal:**
+{current_goal}
+
+**Original User Request:**
+{original_user_request}
+
+**Last Error Observation:**
+{error_observation}
+
+**Conversation History:**
+{history_str}
+
+**TOOL ERROR DETECTED!** The last action used an invalid tool name or wrong parameters.
+
+**AVAILABLE TOOLS AND CORRECT USAGE:**
+{tool_docs}
+
+**CRITICAL INSTRUCTIONS:**
+- The error shows you tried to use a tool that doesn't exist or used wrong parameters
+- You MUST use ONLY the tools listed above with their EXACT parameter names
+- For image analysis, use "describe_image" with parameters: image_path, question
+- For finding similar images, use "find_similar_images" with parameters: image_path, search_directory, top_k, threshold
+- DO NOT invent tool names like "show_image", "read_image", "open_image" - they don't exist!
+
+Your task is to analyze the error and decide what to do next. You have three choices for the 'decision' key:
+
+1.  **"continue"**: Fix the error by using the correct tool and parameters from the documentation above.
+    *   **"comment"**: Explain what went wrong and how you'll fix it.
+    *   **"next_action"**: The corrected action with proper tool name and parameters in this EXACT format:
+        {{
+            "thought": "explanation of what you're trying to do",
+            "tool": "tool_name_here",
+            "args": {{"parameter1": "value1", "parameter2": "value2"}}
+        }}
+
+2.  **"finish"**: If you cannot complete the task with available tools.
+    *   **"comment"**: Explanation of why the task cannot be completed.
+
+3.  **"error"**: If there's an unrecoverable error.
+    *   **"comment"**: Description of the error.
+
+Return your response as JSON.
 """
 
 

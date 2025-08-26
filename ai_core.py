@@ -2,7 +2,7 @@ import os
 import json
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
-from prompts import get_react_system_prompt, get_reflexion_prompt, get_final_summary_prompt
+from prompts import get_react_system_prompt, get_reflexion_prompt, get_final_summary_prompt, get_reflexion_prompt_with_tools
 import memory_system as memory
 from os_detect import get_os_info
 import soundfile as sf
@@ -65,7 +65,44 @@ async def reflexion(history: list, current_goal: str, original_user_request: str
     try:
         latest_user_message = get_latest_user_input(history)
         
-        system_prompt = get_reflexion_prompt(history, current_goal, original_user_request, voice_input_enabled)
+        # Check if the last observation contains tool errors
+        tool_error_detected = False
+        last_observation = None
+        
+        # Look for the most recent observation in history
+        for msg in reversed(history):
+            msg_content = msg.get('content', '')
+            
+            # Check if this is a dictionary with observation field (new format)
+            if isinstance(msg_content, dict) and 'observation' in msg_content:
+                observation_text = str(msg_content['observation'])
+                if any(error in observation_text for error in [
+                    "Unknown tool", "unknown tool", "Unknown argument", "unknown argument",
+                    "Missing required parameter", "Invalid parameter", "Tool not found"
+                ]):
+                    tool_error_detected = True
+                    last_observation = observation_text
+                break
+            # Also check for old format with "Observation:" string
+            elif isinstance(msg_content, str) and "Observation:" in msg_content:
+                observation_text = msg_content
+                if any(error in observation_text for error in [
+                    "Unknown tool", "unknown tool", "Unknown argument", "unknown argument",
+                    "Missing required parameter", "Invalid parameter", "Tool not found"
+                ]):
+                    tool_error_detected = True
+                    last_observation = observation_text
+                break
+        
+        # Use enhanced reflexion prompt if tool error detected
+        if tool_error_detected:
+            from tools import get_tool_docstrings
+            system_prompt = get_reflexion_prompt_with_tools(
+                history, current_goal, original_user_request, voice_input_enabled, 
+                last_observation, get_tool_docstrings()
+            )
+        else:
+            system_prompt = get_reflexion_prompt(history, current_goal, original_user_request, voice_input_enabled)
 
         response = await client.chat.completions.create(
             model="gpt-5-mini",
