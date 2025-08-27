@@ -140,7 +140,7 @@ def get_tool_docstrings() -> str:
             if docstring:
                 # Format the tool documentation
                 tool_doc = f"""
-=== {tool_name.upper()} ===
+=== {tool_name} ===
 Function: {tool_name}{signature}
 Documentation:
 {docstring}

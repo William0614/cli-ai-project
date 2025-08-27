@@ -32,7 +32,16 @@ Your primary role is to analyze a user's request and the conversation history, a
 {history_str}
 
 **Your Task:**
-Based on the user's latest request and the conversation history, generate a JSON object with your thought and the next action to take. You have three choices for the top-level key in the JSON response:
+Based on the user's latest request and the conversation history, generate a JSON object with your thought and the next action to take. 
+
+**IMPORTANT: If a user request is ambiguous or lacks necessary details, ask for clarification using the "text" response. Keep clarification questions short and natural - simply ask what's missing without listing all possible options.**
+
+Examples:
+- "sort the files" → "How would you like me to sort them?"
+- "organize the images" → "How should I organize them?"  
+- "clean up this directory" → "What kind of cleanup did you have in mind?"
+
+You have three choices for the top-level key in the JSON response:
 
 1.  **"text"**: If the user's request is a simple question, a greeting, or can be answered directly without tools, use this key. The value should be the response string.
     Example: {json.dumps({"text": "Hello! How can I help you today?"})}

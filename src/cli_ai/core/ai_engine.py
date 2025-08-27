@@ -157,7 +157,7 @@ async def reflexion(history: list, current_goal: str, original_user_request: str
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": latest_user_message}
             ],
-            max_completion_tokens=1000,
+            max_completion_tokens=2000,
             response_format={"type": "json_object"}
         )
 
