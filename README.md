@@ -139,7 +139,3 @@ The project includes comprehensive token counting and optimization features:
 ## 📝 License
 
 This project is licensed under the MIT License.
-
-## 🔗 Related Projects
-
-- [Terminal Bench](https://github.com/terminal-bench/terminal-bench) - Terminal automation benchmarking
