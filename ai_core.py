@@ -9,7 +9,18 @@ import soundfile as sf
 import sounddevice as sd
 import io
 
+# Try to import tiktoken for token counting, fall back to word estimation if not available
+try:
+    import tiktoken
+    HAS_TIKTOKEN = True
+except ImportError:
+    HAS_TIKTOKEN = False
+    print("Warning: tiktoken not installed. Using word-based token estimation.")
+
 load_dotenv()
+
+# Debug configuration
+DEBUG_PROMPTS = os.getenv("DEBUG_PROMPTS", "false").lower() == "true"
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
@@ -17,6 +28,46 @@ openai_api_key = os.getenv("OPENAI_API_KEY")
 client = AsyncOpenAI(
     api_key=openai_api_key,
 )
+
+def count_tokens(text: str, model: str = "gpt-4") -> int:
+    """Count tokens in text. Uses tiktoken if available, otherwise estimates."""
+    if HAS_TIKTOKEN:
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+            return len(encoding.encode(text))
+        except Exception:
+            # Fallback to cl100k_base encoding
+            encoding = tiktoken.get_encoding("cl100k_base")
+            return len(encoding.encode(text))
+    else:
+        # Rough estimation: ~4 characters per token
+        return len(text) // 4
+
+def print_prompt_debug(system_prompt: str, user_message: str, context: str = ""):
+    """Print detailed prompt information for debugging."""
+    if not DEBUG_PROMPTS:
+        return
+        
+    system_tokens = count_tokens(system_prompt)
+    user_tokens = count_tokens(user_message)
+    total_tokens = system_tokens + user_tokens
+    
+    print("\n" + "="*80)
+    print(f"🔍 PROMPT DEBUG - {context}")
+    print("="*80)
+    print(f"📊 TOKEN COUNTS:")
+    print(f"   System Prompt: {system_tokens:,} tokens")
+    print(f"   User Message:  {user_tokens:,} tokens")
+    print(f"   TOTAL:         {total_tokens:,} tokens")
+    print("\n" + "-"*80)
+    print("🤖 SYSTEM PROMPT:")
+    print("-"*80)
+    print(system_prompt)
+    print("\n" + "-"*80)
+    print("👤 USER MESSAGE:")
+    print("-"*80)
+    print(user_message)
+    print("="*80 + "\n")
 
 
 def get_latest_user_input(history: list) -> str:
@@ -37,6 +88,9 @@ async def think(history: list, current_working_directory: str, voice_input_enabl
         get_os_info() + "\n" + 
         get_react_system_prompt(history, current_working_directory, recalled_memories, voice_input_enabled)
     )
+
+    # Debug: Print the complete prompt being sent to LLM
+    print_prompt_debug(system_prompt, latest_user_message, "MAIN THINK FUNCTION")
 
     try:
         response = await client.chat.completions.create(
@@ -78,7 +132,8 @@ async def reflexion(history: list, current_goal: str, original_user_request: str
                 observation_text = str(msg_content['observation'])
                 if any(error in observation_text for error in [
                     "Unknown tool", "unknown tool", "Unknown argument", "unknown argument",
-                    "Missing required parameter", "Invalid parameter", "Tool not found"
+                    "Missing required parameter", "Invalid parameter", "Tool not found",
+                    "Tool execution failed", "tool execution failed"
                 ]):
                     tool_error_detected = True
                     last_observation = observation_text
@@ -88,7 +143,8 @@ async def reflexion(history: list, current_goal: str, original_user_request: str
                 observation_text = msg_content
                 if any(error in observation_text for error in [
                     "Unknown tool", "unknown tool", "Unknown argument", "unknown argument",
-                    "Missing required parameter", "Invalid parameter", "Tool not found"
+                    "Missing required parameter", "Invalid parameter", "Tool not found",
+                    "Tool execution failed", "tool execution failed"
                 ]):
                     tool_error_detected = True
                     last_observation = observation_text
@@ -101,8 +157,13 @@ async def reflexion(history: list, current_goal: str, original_user_request: str
                 history, current_goal, original_user_request, voice_input_enabled, 
                 last_observation, get_tool_docstrings()
             )
+            context = "ENHANCED REFLEXION (Tool Error Detected)"
         else:
             system_prompt = get_reflexion_prompt(history, current_goal, original_user_request, voice_input_enabled)
+            context = "NORMAL REFLEXION"
+
+        # Debug: Print the complete reflexion prompt being sent to LLM
+        print_prompt_debug(system_prompt, latest_user_message, context)
 
         response = await client.chat.completions.create(
             model="gpt-5-mini",
