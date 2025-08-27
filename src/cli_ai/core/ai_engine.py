@@ -2,32 +2,32 @@ import os
 import json
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
-from prompts import get_react_system_prompt, get_reflexion_prompt, get_final_summary_prompt, get_reflexion_prompt_with_tools
-import memory_system as memory
-from os_detect import get_os_info
+from .prompts import get_react_system_prompt, get_reflexion_prompt, get_final_summary_prompt, get_reflexion_prompt_with_tools
+from ..agents import memory_system as memory
+from ..utils.os_helpers import get_os_info
 import soundfile as sf
 import sounddevice as sd
 import io
 
-# Try to import tiktoken for token counting, fall back to word estimation if not available
 try:
     import tiktoken
     HAS_TIKTOKEN = True
 except ImportError:
     HAS_TIKTOKEN = False
-    print("Warning: tiktoken not installed. Using word-based token estimation.")
 
 load_dotenv()
 
-# Debug configuration
 DEBUG_PROMPTS = os.getenv("DEBUG_PROMPTS", "false").lower() == "true"
-
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
-# Create an async client pointing to your local server
-client = AsyncOpenAI(
-    api_key=openai_api_key,
-)
+client = None
+
+def get_client():
+    """Get or create the OpenAI client."""
+    global client
+    if client is None:
+        client = AsyncOpenAI(api_key=openai_api_key)
+    return client
 
 def count_tokens(text: str, model: str = "gpt-4") -> int:
     """Count tokens in text. Uses tiktoken if available, otherwise estimates."""
@@ -44,7 +44,6 @@ def count_tokens(text: str, model: str = "gpt-4") -> int:
         return len(text) // 4
 
 def print_prompt_debug(system_prompt: str, user_message: str, context: str = ""):
-    """Print detailed prompt information for debugging."""
     if not DEBUG_PROMPTS:
         return
         
@@ -52,23 +51,11 @@ def print_prompt_debug(system_prompt: str, user_message: str, context: str = "")
     user_tokens = count_tokens(user_message)
     total_tokens = system_tokens + user_tokens
     
-    print("\n" + "="*80)
-    print(f"🔍 PROMPT DEBUG - {context}")
-    print("="*80)
-    print(f"📊 TOKEN COUNTS:")
-    print(f"   System Prompt: {system_tokens:,} tokens")
-    print(f"   User Message:  {user_tokens:,} tokens")
-    print(f"   TOTAL:         {total_tokens:,} tokens")
-    print("\n" + "-"*80)
-    print("🤖 SYSTEM PROMPT:")
-    print("-"*80)
-    print(system_prompt)
-    print("\n" + "-"*80)
-    print("👤 USER MESSAGE:")
-    print("-"*80)
-    print(user_message)
-    print("="*80 + "\n")
-
+    print(f"\n--- DEBUG: {context} ---")
+    print(f"Tokens: System={system_tokens:,}, User={user_tokens:,}, Total={total_tokens:,}")
+    print(f"System: {system_prompt[:200]}..." if len(system_prompt) > 200 else f"System: {system_prompt}")
+    print(f"User: {user_message}")
+    print("-" * 50)
 
 def get_latest_user_input(history: list) -> str:
     """Returns the latest user input from the history."""
@@ -93,7 +80,7 @@ async def think(history: list, current_working_directory: str, voice_input_enabl
     print_prompt_debug(system_prompt, latest_user_message, "MAIN THINK FUNCTION")
 
     try:
-        response = await client.chat.completions.create(
+        response = await get_client().chat.completions.create(
             model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -119,7 +106,6 @@ async def reflexion(history: list, current_goal: str, original_user_request: str
     try:
         latest_user_message = get_latest_user_input(history)
         
-        # Check if the last observation contains tool errors
         tool_error_detected = False
         last_observation = None
         
@@ -152,7 +138,7 @@ async def reflexion(history: list, current_goal: str, original_user_request: str
         
         # Use enhanced reflexion prompt if tool error detected
         if tool_error_detected:
-            from tools import get_tool_docstrings
+            from ..tools.tools import get_tool_docstrings
             system_prompt = get_reflexion_prompt_with_tools(
                 history, current_goal, original_user_request, voice_input_enabled, 
                 last_observation, get_tool_docstrings()
@@ -165,7 +151,7 @@ async def reflexion(history: list, current_goal: str, original_user_request: str
         # Debug: Print the complete reflexion prompt being sent to LLM
         print_prompt_debug(system_prompt, latest_user_message, context)
 
-        response = await client.chat.completions.create(
+        response = await get_client().chat.completions.create(
             model="gpt-5-mini",
             messages= [
                 {"role": "system", "content": system_prompt},
@@ -196,7 +182,7 @@ async def summarize_plan_result(plan_results: list) -> str:
     summary_prompt = get_final_summary_prompt(plan_results)
 
     try:
-        response = await client.chat.completions.create(
+        response = await get_client().chat.completions.create(
             model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant who answers the user prompt using plan execution results."},
@@ -219,7 +205,7 @@ async def speak_text_openai(text: str):
     print(f"Jarvis: {text}")
     try:
         # Generate the audio stream from the text
-        response = await client.audio.speech.create(
+        response = await get_client().audio.speech.create(
             model="tts-1",          # "tts-1" is faster, "tts-1-hd" is higher quality
             voice="nova",           # Choose from 'alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'
             input=text
@@ -244,7 +230,6 @@ async def classify_intent(user_input: str) -> str:
     Uses a lightweight LLM prompt to determine if the user wants to exit.
     This is optimized for speed and token efficiency.
     """
-    # This prompt is highly focused on a single binary question.
     system_prompt = """You are an assistant that determines if the user wants to end the conversation.
 Respond with only 'yes' or 'no' in lowercase.
 
@@ -268,7 +253,7 @@ Assistant: no
 """
 
     try:
-        response = await client.chat.completions.create(
+        response = await get_client().chat.completions.create(
             model="gpt-5-nano", 
             messages=[
                 {"role": "system", "content": system_prompt},

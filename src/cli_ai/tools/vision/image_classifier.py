@@ -1,7 +1,3 @@
-"""
-Enhanced image classification with OpenAI API support.
-This extends the existing image_tools.py functionality.
-"""
 import os
 import base64
 import asyncio
@@ -10,24 +6,14 @@ from typing import Dict, Any
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
-# Configuration
 USE_OPENAI = os.getenv("USE_OPENAI_VISION", "false").lower() == "true"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Debug: Print configuration (remove this after testing)
-print(f"DEBUG: USE_OPENAI_VISION = {os.getenv('USE_OPENAI_VISION')}")
-print(f"DEBUG: USE_OPENAI = {USE_OPENAI}")
-print(f"DEBUG: OPENAI_API_KEY exists = {bool(OPENAI_API_KEY)}")
-print(f"DEBUG: OPENAI_API_KEY starts with = {OPENAI_API_KEY[:10] if OPENAI_API_KEY else 'None'}...")
-
-# Import the original function
-from image_tools import classify_image as local_classify_image
+from .local_models import classify_image as local_classify_image
 
 def encode_image_base64(image_path: str) -> str:
-    """Encode image to base64 for OpenAI API."""
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode('utf-8')
 
@@ -103,15 +89,7 @@ async def describe_image_openai(image_path: str, question: str) -> Dict[str, Any
         }
 
 def describe_image(image_path: str, question: str) -> Dict[str, Any]:
-    """
-    Describe and analyze an image - automatically chooses between local and OpenAI based on configuration.
-    
-    To use OpenAI instead of local model:
-    1. Set environment variable: USE_OPENAI_VISION=true
-    2. Set environment variable: OPENAI_API_KEY=your_key_here
-    """
     if USE_OPENAI:
-        # Use a simpler approach - run in new thread to avoid event loop issues
         import asyncio
         import threading
         
@@ -121,7 +99,6 @@ def describe_image(image_path: str, question: str) -> Dict[str, Any]:
         def run_async():
             nonlocal result, exception
             try:
-                # Create new event loop for this thread
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 result = loop.run_until_complete(describe_image_openai(image_path, question))
@@ -137,8 +114,35 @@ def describe_image(image_path: str, question: str) -> Dict[str, Any]:
             return {"error": f"OpenAI API Error: {exception}", "image_path": image_path}
         return result
     else:
-        # Use the original local implementation
-        return local_classify_image(image_path, question)
+        import asyncio
+        
+        def run_in_new_loop():
+            new_loop = asyncio.new_event_loop()
+            try:
+                asyncio.set_event_loop(new_loop)
+                return new_loop.run_until_complete(local_classify_image(image_path, question))
+            finally:
+                new_loop.close()
+                
+        # Run in a thread to avoid event loop conflicts
+        import threading
+        result = None
+        exception = None
+        
+        def run_async():
+            nonlocal result, exception
+            try:
+                result = run_in_new_loop()
+            except Exception as e:
+                exception = e
+                
+        thread = threading.Thread(target=run_async)
+        thread.start()
+        thread.join()
+        
+        if exception:
+            return {"error": f"Local model error: {exception}", "image_path": image_path}
+        return result
 
 # For direct async usage
 async def describe_image_async(image_path: str, question: str) -> Dict[str, Any]:

@@ -2,11 +2,11 @@ import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import asyncio
 import json
-from ai_core import think, reflexion, speak_text_openai, classify_intent
-from executor import execute_tool
-from speech_to_text import get_voice_input_whisper
-from utils import Spinner
-import memory_system as memory
+from src.cli_ai.core.ai_engine import think, reflexion, speak_text_openai, classify_intent
+from src.cli_ai.tools.executor import execute_tool
+from src.cli_ai.tools.audio.speech_to_text import get_voice_input_whisper
+from src.cli_ai.utils.spinner import Spinner
+from src.cli_ai.agents import memory_system as memory
 from colorama import init, Fore
 
 init(autoreset=True)
@@ -188,7 +188,7 @@ if __name__ == "__main__":
             os.path.dirname(os.path.abspath(__file__)), "agent_memory.db"
         )
         if not os.path.exists(db_path):
-            from database import initialize_db
+            from src.cli_ai.utils.database import initialize_db
 
             initialize_db()
             print("Database initialized.")

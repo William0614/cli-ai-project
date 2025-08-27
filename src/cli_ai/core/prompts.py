@@ -1,6 +1,6 @@
 import json
 from typing import List, Dict, Any
-from tools import tools_schema, get_tool_docstrings
+from ..tools.tools import tools_schema, get_tool_docstrings
 
 def get_react_system_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]], voice_input_enabled: bool) -> str:
     """

@@ -4,8 +4,8 @@ import shlex
 import json
 import os
 from colorama import Fore
-from tools import available_tools
-from utils import Spinner
+from .tools import available_tools
+from ..utils.spinner import Spinner
 
 current_working_directory = os.getcwd()
 

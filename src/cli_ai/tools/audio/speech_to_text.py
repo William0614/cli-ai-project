@@ -3,14 +3,13 @@ import numpy as np
 from transformers import pipeline
 import sounddevice as sd
 from typing import Optional
-from utils import Spinner
+from ...utils.spinner import Spinner
 from colorama import init, Fore
 
 model_name = "openai/whisper-tiny.en"
 asr_pipeline = pipeline("automatic-speech-recognition", model=model_name)
 
 # --- Silero VAD Setup ---
-# This model is downloaded automatically the first time you run it.
 try:
     vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                       model='silero_vad',

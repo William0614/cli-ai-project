@@ -1,0 +1,12 @@
+include README.md
+include LICENSE
+include requirements.txt
+include .env.example
+recursive-include src/cli_ai *.py
+recursive-include assets *
+recursive-include docs *
+recursive-include examples *
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude *.so
+global-exclude .DS_Store

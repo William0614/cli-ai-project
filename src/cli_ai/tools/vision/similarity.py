@@ -3,31 +3,16 @@ import os
 from PIL import Image
 from transformers import AutoImageProcessor, AutoModel
 from scipy.spatial.distance import cosine
-from utils import Spinner
+from ...utils.spinner import Spinner
 
-# --------- Model Cache ---------
-# This dictionary will hold the loaded models to avoid reloading them multiple times
 MODEL_CACHE = {}
 
 def get_image_embedding(image_path: str, model_name: str = "facebook/dinov3-vitl16-pretrain-lvd1689m") -> list[float]:
-    """
-    Generates a DINOv3 image embedding for a given image.
-    Caches thae model for performance.
-
-    Args:
-        image_path: The path to the image file.
-        model_name: The name of the DINOv3 model to use.
-    
-    Returns:
-        A list of floats representing the image embedding.
-    """
-    # Check if the model is already loaded, if not, load it.
     if model_name not in MODEL_CACHE:
         Spinner.set_message(self=Spinner, message=f"Loading model '{model_name}' into memory...")
         processor = AutoImageProcessor.from_pretrained(model_name)
         model = AutoModel.from_pretrained(model_name)
         MODEL_CACHE[model_name] = {"processor": processor, "model": model}
-        # print("Model loaded successfully.")
 
     processor = MODEL_CACHE[model_name]["processor"]
     model = MODEL_CACHE[model_name]["model"]

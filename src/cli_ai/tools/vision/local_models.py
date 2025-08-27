@@ -27,9 +27,6 @@ server_running: bool = True
 
 class LocalImageServer(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
-        # Serve files from the current working directory
-        # This is a simplification; in a real scenario, you might want to restrict this
-        # to a specific 'photos' directory or similar.
         super().do_GET()
 
 def start_local_server_if_not_running():
@@ -39,8 +36,6 @@ def start_local_server_if_not_running():
         return
 
     try:
-        # Set up the server to serve from the current working directory
-        # This allows the model to access images from anywhere the agent is working
         Handler = LocalImageServer
         httpd = socketserver.TCPServer( ( "", LOCAL_SERVER_PORT), Handler)
         

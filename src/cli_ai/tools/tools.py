@@ -4,8 +4,8 @@ import aiofiles
 import os
 import inspect
 from typing import Any, Optional
-from image_classifier import describe_image
-from vision_tools import find_similar_images
+from .vision.image_classifier import describe_image
+from .vision.similarity import find_similar_images
 
 # --- 1. ASYNC TOOL IMPLEMENTATIONS ---
 

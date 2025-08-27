@@ -2,7 +2,7 @@
 import json
 from typing import List, Dict, Any, Optional
 from sentence_transformers import SentenceTransformer
-import database as db
+from ..utils import database as db
 
 MODEL = SentenceTransformer('all-MiniLM-L6-v2')
 

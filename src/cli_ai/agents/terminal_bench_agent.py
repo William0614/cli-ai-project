@@ -82,8 +82,6 @@ class Jarvis(BaseAgent):
         return asyncio.run(_run_async_logic())
 
     def _get_network_name(self, container_name: str) -> str:
-        # This method is part of BaseAgent but might not be directly relevant
-        # for a simple agent that doesn't manage network containers.
         return super()._get_network_name(container_name)
 
     @property
