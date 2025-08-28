@@ -11,9 +11,11 @@ Architecture: AI Context = System Prompt + Recent History (20) + RAG from Vector
 """
 
 from .session_manager import SessionMemoryManager
+from .vector_manager import VectorMemoryManager
 
 __all__ = [
-    "SessionMemoryManager"
+    "SessionMemoryManager",
+    "VectorMemoryManager"
 ]
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"

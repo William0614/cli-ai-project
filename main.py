@@ -8,7 +8,7 @@ from src.cli_ai.tools.executor import execute_tool
 from src.cli_ai.tools.audio.speech_to_text import get_voice_input_whisper
 from src.cli_ai.utils.spinner import Spinner
 from src.cli_ai.agents import memory_system as memory
-from src.cli_ai.memory import SessionMemoryManager
+from src.cli_ai.memory import SessionMemoryManager, VectorMemoryManager
 from colorama import init, Fore
 
 init(autoreset=True)
@@ -44,8 +44,10 @@ async def main():
     spinner = Spinner("Thinking...")
     
     # Initialize smart memory system
-    session_memory = SessionMemoryManager(max_recent_length=20)
+    session_memory = SessionMemoryManager(max_recent_length=6)
+    vector_memory = VectorMemoryManager()
     print(Fore.GREEN + f"[Smart Memory] Session started: {session_memory.session_id}")
+    print(Fore.GREEN + f"[Vector Memory] Connected to vector database")
     
     voice_input_enabled = False  # Voice input is off by default
 
@@ -67,8 +69,12 @@ async def main():
             final_messages = session_memory.clear_session()
             if final_messages:
                 conversation_text = session_memory.format_conversation_for_storage(final_messages)
+                success = vector_memory.store_conversation_chunk(final_messages, {"reason": "session_end"})
                 print(Fore.BLUE + f"[Smart Memory] Saving {len(final_messages)} messages to long-term storage")
-                # TODO: Save to vector database in Phase 2
+                if success:
+                    print(Fore.GREEN + f"[Vector Memory] Session conversations stored successfully")
+                else:
+                    print(Fore.RED + f"[Vector Memory] Error storing session conversations")
             await asyncio.sleep(1)
             break
 
@@ -120,8 +126,13 @@ async def main():
                 session_memory.recent_messages = session_memory.recent_messages[overflow_count:]
                 
                 if overflow_messages:
-                    conversation_text = session_memory.format_conversation_for_storage(overflow_messages)
+                    # Store in vector database
+                    success = vector_memory.store_conversation_chunk(overflow_messages, {"reason": "overflow", "trigger": "text_response"})
                     print(Fore.BLUE + f"[Smart Memory] {len(overflow_messages)} messages ({len(overflow_messages)//2} pairs) moved to long-term storage")
+                    if success:
+                        print(Fore.GREEN + f"[Vector Memory] Overflow stored in vector database")
+                    else:
+                        print(Fore.RED + f"[Vector Memory] Error storing overflow")
             continue
 
         elif "save_to_memory" in decision:
@@ -155,8 +166,10 @@ async def main():
                 session_memory.recent_messages = session_memory.recent_messages[overflow_count:]
                 
                 if overflow_messages:
-                    conversation_text = session_memory.format_conversation_for_storage(overflow_messages)
+                    success = vector_memory.store_conversation_chunk(overflow_messages, {"reason": "overflow", "trigger": "memory_save"})
                     print(Fore.BLUE + f"[Smart Memory] {len(overflow_messages)} messages moved to long-term storage")
+                    if success:
+                        print(Fore.GREEN + f"[Vector Memory] Overflow stored successfully")
             continue
 
         elif "action" in decision:
