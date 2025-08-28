@@ -7,6 +7,7 @@ from src.cli_ai.tools.executor import execute_tool
 from src.cli_ai.tools.audio.speech_to_text import get_voice_input_whisper
 from src.cli_ai.utils.spinner import Spinner
 from src.cli_ai.agents import memory_system as memory
+from src.cli_ai.memory import SessionMemoryManager
 from colorama import init, Fore
 
 init(autoreset=True)
@@ -40,7 +41,11 @@ async def main():
         + "Autonomous Agent Started. Type '/voice' to toggle voice input. Type 'exit' to quit."
     )
     spinner = Spinner("Thinking...")
-    history = []
+    
+    # Initialize smart memory system
+    session_memory = SessionMemoryManager(max_recent_length=20)
+    print(Fore.GREEN + f"[Smart Memory] Session started: {session_memory.session_id}")
+    
     voice_input_enabled = False  # Voice input is off by default
 
     while True:
@@ -57,11 +62,18 @@ async def main():
             continue
         intent = await classify_intent(user_input)
         if intent == "exit_program" or user_input.lower() == "exit":
+            # Save session to vector storage before exit
+            final_messages = session_memory.clear_session()
+            if final_messages:
+                conversation_text = session_memory.format_conversation_for_storage(final_messages)
+                print(Fore.BLUE + f"[Smart Memory] Saving {len(final_messages)} messages to long-term storage")
+                # TODO: Save to vector database in Phase 2
             await asyncio.sleep(1)
             break
-        history.append({"role": "user", "content": user_input})
 
         spinner.start()
+        # Get recent messages for AI context
+        history = session_memory.get_recent_messages()
         decision = await think(history, current_working_directory, voice_input_enabled)
         spinner.stop()
 
@@ -71,17 +83,29 @@ async def main():
                 await speak_text_openai(ai_response)
             else:
                 print(Fore.MAGENTA + f"Jarvis: {ai_response}")
-            history.append({"role": "AI", "content": ai_response})
+            
+            # Add exchange to smart memory
+            overflow = session_memory.add_exchange(user_input, ai_response)
+            if overflow:
+                # TODO: Phase 2 - Send overflow to vector database
+                conversation_text = session_memory.format_conversation_for_storage(overflow)
+                print(Fore.BLUE + f"[Smart Memory] {len(overflow)} messages moved to long-term storage")
             continue
 
         elif "save_to_memory" in decision:
             fact_to_save = decision["save_to_memory"]
             memory.save_memory(fact_to_save, {"type": "declarative"})
+            response_msg = "Understood."
             if voice_input_enabled:
-                await speak_text_openai("Understood.")
+                await speak_text_openai(response_msg)
             else:
                 print(Fore.GREEN + f"Saved to memory: {fact_to_save}")
-            history.append({"role": "AI", "content": f"Saved to memory: {fact_to_save}"})
+            
+            # Add to smart memory
+            overflow = session_memory.add_exchange(user_input, f"Saved to memory: {fact_to_save}")
+            if overflow:
+                conversation_text = session_memory.format_conversation_for_storage(overflow)
+                print(Fore.BLUE + f"[Smart Memory] {len(overflow)} messages moved to long-term storage")
             continue
 
         elif "action" in decision:
@@ -127,47 +151,76 @@ async def main():
                 else:
                     print(output_block)
 
-                history.append({"role": "AI", "content": {"thought": action['thought'], "current_goal": current_goal, "action": action['tool'], "args": action['args'], "observation": observation}})
+                # Add action to session memory using the optimized format
+                action_overflow = session_memory.add_action_response(
+                    user_request=user_input,
+                    thought=action['thought'],
+                    action=action['tool'],
+                    args=action['args'],
+                    observation=observation,
+                    metadata={"current_goal": current_goal, "action_type": "tool_execution"}
+                )
+                
+                if action_overflow:
+                    conversation_text = session_memory.format_conversation_for_storage(action_overflow)
+                    print(Fore.BLUE + f"[Smart Memory] Action overflow: {len(action_overflow)} messages moved to storage")
 
                 is_error = observation.get("status") == "Error"
 
                 original_user_request = action.get("original_user_request", user_input) # Use the original user request if available
-                # print(f"\nOriginal User Request: {original_user_request}")
-                # print(f"\nObservation: {observation}")
-                # print(f"\nFormatted observation: {json.dumps(observation, indent=2)}")
-                # print(f"History: {json.dumps(history, indent=2)}")
                 spinner.stop()
                 spinner.set_message("Reflecting on the result...")
                 spinner.start()
-                reflection = await reflexion(history, current_goal, original_user_request, voice_input_enabled)
+                
+                # Get current conversation history for reflexion
+                current_history = session_memory.get_recent_messages_for_ai()
+                reflection = await reflexion(current_history, current_goal, original_user_request, voice_input_enabled)
                 spinner.stop()
                 spinner.set_message("Thinking...")
                 
                 if reflection["decision"] == "finish":
+                    final_response = reflection["comment"]
                     if voice_input_enabled:
-                        await speak_text_openai(reflection["comment"])
+                        await speak_text_openai(final_response)
                     else:
-                        print(Fore.MAGENTA + f"Jarvis: {reflection['comment']}")
-                    history.append({'role': 'assistant', 'content': reflection['comment']})
+                        print(Fore.MAGENTA + f"Jarvis: {final_response}")
+                    
+                    # Add final exchange to session memory
+                    overflow = session_memory.add_exchange(user_input, final_response)
+                    if overflow:
+                        conversation_text = session_memory.format_conversation_for_storage(overflow)
+                        print(Fore.BLUE + f"[Smart Memory] {len(overflow)} messages moved to long-term storage")
                     break
                 
                 elif reflection["decision"] == "error":
+                    error_response = f"Error: {reflection['comment']}"
                     if voice_input_enabled:
-                        await speak_text_openai(f"Error: {reflection['comment']}")
+                        await speak_text_openai(error_response)
                     else:
-                        print(Fore.RED + f"Reflexion decision == error. Error: {reflection['comment']}")
-                    history.append({'role': 'assistant', 'content': f"Error: {reflection['comment']}"})
+                        print(Fore.RED + f"Reflexion decision == error. {error_response}")
+                    
+                    # Add error exchange to session memory  
+                    overflow = session_memory.add_exchange(user_input, error_response)
+                    if overflow:
+                        conversation_text = session_memory.format_conversation_for_storage(overflow)
+                        print(Fore.BLUE + f"[Smart Memory] {len(overflow)} messages moved to long-term storage")
                     break
 
                 elif reflection["decision"] == "continue":
                     if is_error:
                         replan_count += 1
                         if replan_count >= MAX_REPLANS:
+                            abort_msg = "Max replan attempts reached. Aborting task."
                             if voice_input_enabled:
-                                await speak_text_openai("Max replan attempts reached. Aborting task.")
+                                await speak_text_openai(abort_msg)
                             else:
-                                print(Fore.RED + "Max replan attempts reached. Aborting task.")
-                            history.append({'role': 'assistant', 'content': "Max replan attempts reached. Aborting task."})
+                                print(Fore.RED + abort_msg)
+                            
+                            # Add abort exchange to session memory
+                            overflow = session_memory.add_exchange(user_input, abort_msg)
+                            if overflow:
+                                conversation_text = session_memory.format_conversation_for_storage(overflow)
+                                print(Fore.BLUE + f"[Smart Memory] {len(overflow)} messages moved to long-term storage")
                             break
                     if voice_input_enabled:
                         await speak_text_openai(reflection["comment"])
@@ -179,7 +232,12 @@ async def main():
                 await speak_text_openai(error_msg)
             else:
                 print(Fore.RED + error_msg)
-            history.append({'role': 'assistant', 'content': f"Error: {error_msg}"})
+            
+            # Add error exchange to session memory
+            overflow = session_memory.add_exchange(user_input, f"Error: {error_msg}")
+            if overflow:
+                conversation_text = session_memory.format_conversation_for_storage(overflow)
+                print(Fore.BLUE + f"[Smart Memory] {len(overflow)} messages moved to long-term storage")
 
 
 if __name__ == "__main__":
