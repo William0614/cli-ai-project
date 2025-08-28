@@ -7,8 +7,7 @@ from src.cli_ai.core.ai_engine import think, reflexion, speak_text_openai, class
 from src.cli_ai.tools.executor import execute_tool
 from src.cli_ai.tools.audio.speech_to_text import get_voice_input_whisper
 from src.cli_ai.utils.spinner import Spinner
-from src.cli_ai.agents import memory_system as memory
-from src.cli_ai.memory import SessionMemoryManager, VectorMemoryManager
+from src.cli_ai.memory import SessionMemoryManager, VectorMemoryManager, UserInfoManager
 from colorama import init, Fore
 
 init(autoreset=True)
@@ -46,8 +45,10 @@ async def main():
     # Initialize smart memory system
     session_memory = SessionMemoryManager(max_recent_length=6)
     vector_memory = VectorMemoryManager()
+    user_info = UserInfoManager()
     print(Fore.GREEN + f"[Smart Memory] Session started: {session_memory.session_id}")
     print(Fore.GREEN + f"[Vector Memory] Connected to vector database")
+    print(Fore.GREEN + f"[User Info] Automatic extraction enabled")
     
     voice_input_enabled = False  # Voice input is off by default
 
@@ -65,10 +66,16 @@ async def main():
             continue
         intent = await classify_intent(user_input)
         if intent == "exit_program" or user_input.lower() == "exit":
-            # Save session to vector storage before exit
+            # Extract user info and save session to vector storage before exit
             final_messages = session_memory.clear_session()
             if final_messages:
-                conversation_text = session_memory.format_conversation_for_storage(final_messages)
+                # Extract user info from final session
+                extracted_info = await user_info.extract_user_info_from_conversation(final_messages)
+                if extracted_info:
+                    stored_count = user_info.store_user_info(extracted_info)
+                    print(Fore.GREEN + f"[User Info] Extracted {stored_count} user information items from session")
+                
+                # Store final conversations in vector database
                 success = vector_memory.store_conversation_chunk(final_messages, {"reason": "session_end"})
                 print(Fore.BLUE + f"[Smart Memory] Saving {len(final_messages)} messages to long-term storage")
                 if success:
@@ -93,7 +100,7 @@ async def main():
         spinner.start()
         # Get recent messages for AI context (now includes current user input)
         history = session_memory.get_recent_messages_for_ai()
-        decision = await think(history, current_working_directory, voice_input_enabled)
+        decision = await think(history, current_working_directory, voice_input_enabled, user_info)
         spinner.stop()
 
         if "text" in decision:
@@ -126,6 +133,12 @@ async def main():
                 session_memory.recent_messages = session_memory.recent_messages[overflow_count:]
                 
                 if overflow_messages:
+                    # Extract user info before storing in vector database
+                    extracted_info = await user_info.extract_user_info_from_conversation(overflow_messages)
+                    if extracted_info:
+                        stored_count = user_info.store_user_info(extracted_info)
+                        print(Fore.GREEN + f"[User Info] Extracted {stored_count} user information items")
+                    
                     # Store in vector database
                     success = vector_memory.store_conversation_chunk(overflow_messages, {"reason": "overflow", "trigger": "text_response"})
                     print(Fore.BLUE + f"[Smart Memory] {len(overflow_messages)} messages ({len(overflow_messages)//2} pairs) moved to long-term storage")
@@ -135,14 +148,8 @@ async def main():
                         print(Fore.RED + f"[Vector Memory] Error storing overflow")
             continue
 
-        elif "save_to_memory" in decision:
-            fact_to_save = decision["save_to_memory"]
-            memory.save_memory(fact_to_save, {"type": "declarative"})
-            response_msg = "Understood."
-            if voice_input_enabled:
-                await speak_text_openai(response_msg)
-            else:
-                print(Fore.GREEN + f"Saved to memory: {fact_to_save}")
+        # Note: Manual save_memory removed - UserInfo extraction is now automatic
+        # All user information is extracted from natural conversation
             
             # Add AI response and check for overflow after complete exchange
             ai_message = {
@@ -166,6 +173,12 @@ async def main():
                 session_memory.recent_messages = session_memory.recent_messages[overflow_count:]
                 
                 if overflow_messages:
+                    # Extract user info before storing in vector database
+                    extracted_info = await user_info.extract_user_info_from_conversation(overflow_messages)
+                    if extracted_info:
+                        stored_count = user_info.store_user_info(extracted_info)
+                        print(Fore.GREEN + f"[User Info] Extracted {stored_count} user information items")
+                    
                     success = vector_memory.store_conversation_chunk(overflow_messages, {"reason": "overflow", "trigger": "memory_save"})
                     print(Fore.BLUE + f"[Smart Memory] {len(overflow_messages)} messages moved to long-term storage")
                     if success:

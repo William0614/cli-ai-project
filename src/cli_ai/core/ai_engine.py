@@ -3,7 +3,6 @@ import json
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from .prompts import get_react_system_prompt, get_reflexion_prompt, get_final_summary_prompt, get_reflexion_prompt_with_tools
-from ..agents import memory_system as memory
 from ..utils.os_helpers import get_os_info
 import soundfile as sf
 import sounddevice as sd
@@ -64,10 +63,21 @@ def get_latest_user_input(history: list) -> str:
             return message["content"]
     return ""
 
-async def think(history: list, current_working_directory: str, voice_input_enabled: bool) -> dict:
+async def think(history: list, current_working_directory: str, voice_input_enabled: bool, user_info_manager=None) -> dict:
     """Creates a thought and action using the ReAct prompt."""
     latest_user_message = get_latest_user_input(history)
-    recalled_memories = memory.recall_memories(latest_user_message)
+    
+    # Get user information for context
+    recalled_memories = []
+    if user_info_manager:
+        user_info_data = user_info_manager.get_user_info()
+        if user_info_data:
+            # Convert user info to memory format for the prompt
+            for info in user_info_data[:10]:  # Limit to prevent context bloat
+                recalled_memories.append({
+                    'content': f"User {info['category']}: {info['key']} = {info['value']}",
+                    'timestamp': info.get('timestamp', 'user_info')
+                })
 
     BASE_PROMPT = "You are a cli-assistant that performs user's tasks with the tools you have."
     system_prompt = (
@@ -92,9 +102,8 @@ async def think(history: list, current_working_directory: str, voice_input_enabl
         raw_response_content = response.choices[0].message.content
         decision = json.loads(raw_response_content)
         
-        if "save_to_memory" in decision:
-            memory.save_memory(decision["save_to_memory"], {"type": "declarative"})
-
+        # Note: save_to_memory removed - UserInfo extraction is now automatic
+        
         return decision
 
     except Exception as e:
