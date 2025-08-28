@@ -36,15 +36,12 @@ Based on the user's latest request and the conversation history, generate a JSON
 
 **IMPORTANT: If a user request is ambiguous or lacks necessary details, ask for clarification using the "text" response. Keep clarification questions short and natural.**
 
-You have three choices for the top-level key in the JSON response:
+You have two choices for the top-level key in the JSON response:
 
 1.  **"text"**: If the user's request is a simple question, a greeting, or can be answered directly without tools, use this key. The value should be the response string.
     Example: {json.dumps({"text": "Hello! How can I help you today?"})}
 
-2.  **"save_to_memory"**: If the user provides a new piece of information that should be remembered, use this key. The value should be the string of information to save.
-    Example: {json.dumps({"save_to_memory": "The user's favorite color is blue."})}
-
-3.  **"action" and "original_user_request"**: If the request requires a tool, your JSON response **MUST** cotain these two top-level keys.  
+2.  **"action" and "original_user_request"**: If the request requires a tool, your JSON response **MUST** cotain these two top-level keys.  
     *   **`original_user_request`**: A string containing the verbatim user prompt that initiated the current task. You must look back in the conversation history to find the root of the request, 
     especially if the last message was a clarification. The value should be a dictionary containing the tool to use and the arguments.
     *   **`action`**: A dictionary containing the following keys:

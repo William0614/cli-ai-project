@@ -1,21 +1,19 @@
 """
-Smart Memory Architecture Package
+Smart Memory System for CLI AI Agent
 
-This package implements a hybrid memory system combining:
-1. Session Memory Manager - Bounded recent conversation history
-2. Vector Memory Manager - Semantic search of overflow conversations  
-3. User Preference Manager - Learned user patterns and preferences
-4. Context Assembly Engine - Intelligent context building for AI
+Provides intelligent memory management with:
+- SessionMemoryManager: Bounded recent message storage with overflow handling
+- VectorMemoryManager: FAISS-based semantic search and long-term storage
+- UserInfoManager: Automatic extraction and management of user information
 
-Architecture: AI Context = System Prompt + Recent History (20) + RAG from Vector DB + User Preferences
+This hybrid architecture maintains recent context while providing semantic search
+capabilities and intelligent user profile building from natural conversation.
 """
 
 from .session_manager import SessionMemoryManager
 from .vector_manager import VectorMemoryManager
+from .userinfo_manager import UserInfoManager
 
-__all__ = [
-    "SessionMemoryManager",
-    "VectorMemoryManager"
-]
+__all__ = ["SessionMemoryManager", "VectorMemoryManager", "UserInfoManager"]
 
 __version__ = "2.0.0"
