@@ -76,18 +76,23 @@ class UserInfoManager:
         for msg in messages:
             if msg.get('role') == 'user':
                 content = msg.get('content', '')
-                session_id = msg.get('session_id', 'unknown')
+                source_session_id = msg.get('session_id', 'unknown')
                 
                 # Extract different types of user information
-                info_items = await self._analyze_user_content(content, session_id)
+                # All user info goes to persistent profile regardless of source session
+                info_items = await self._analyze_user_content(content, source_session_id)
                 extracted_info.extend(info_items)
                 
         return extracted_info
     
-    async def _analyze_user_content(self, content: str, session_id: str) -> List[UserInfo]:
+    async def _analyze_user_content(self, content: str, source_session_id: str = None) -> List[UserInfo]:
         """
         Analyze user message content for personal information using LLM.
         Much more reliable than regex patterns - understands context and nuance.
+        
+        Args:
+            content: User message content to analyze
+            source_session_id: Original session (for reference, but user info goes to persistent profile)
         """
         if not content or len(content.strip()) < 3:
             return []
@@ -162,7 +167,7 @@ Return empty extractions array if no clear user info found."""
                         confidence=float(extraction["confidence"]),
                         source="llm_extraction",
                         timestamp=timestamp,
-                        session_id=session_id
+                        session_id="persistent_user_profile"  # Use persistent session ID
                     )
                     extracted_info.append(user_info)
             

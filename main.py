@@ -38,7 +38,7 @@ async def get_user_input(voice_input_enabled: bool) -> tuple[str, bool]:
 async def main():
     print(
         Fore.YELLOW
-        + "Autonomous Agent Started. Type '/voice' to toggle voice input. Type 'exit' to quit."
+        + "Autonomous Agent Started. Type '/voice' to toggle voice input, '/flush' to clear conversation, 'exit' to quit."
     )
     spinner = Spinner("Thinking...")
     
@@ -63,6 +63,23 @@ async def main():
                 await speak_text_openai("Voice input is now enabled.")
             else:
                 print(Fore.GREEN + f"Voice input is now disabled.")
+            continue
+        if user_input.lower() == "/flush":
+            # Extract user info from current session before flushing
+            current_messages = session_memory.recent_messages.copy()
+            if current_messages:
+                extracted_info = await user_info.extract_user_info_from_conversation(current_messages)
+                if extracted_info:
+                    stored_count = user_info.store_user_info(extracted_info)
+                    print(Fore.GREEN + f"[User Info] Extracted {stored_count} user information items before flush")
+                
+                # DON'T store conversations in vector memory - let them be forgotten
+                print(Fore.BLUE + f"[Flush] Discarding {len(current_messages)} conversation messages")
+            
+            # Clear session memory - conversations are truly forgotten
+            session_memory.recent_messages.clear()
+            session_memory.message_count = 0
+            print(Fore.YELLOW + "[Session Flushed] Conversation history forgotten. User preferences preserved.")
             continue
         intent = await classify_intent(user_input)
         if intent == "exit_program" or user_input.lower() == "exit":
