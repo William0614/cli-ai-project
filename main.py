@@ -2,6 +2,7 @@ import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import asyncio
 import json
+from datetime import datetime
 from src.cli_ai.core.ai_engine import think, reflexion, speak_text_openai, classify_intent
 from src.cli_ai.tools.executor import execute_tool
 from src.cli_ai.tools.audio.speech_to_text import get_voice_input_whisper
@@ -71,9 +72,21 @@ async def main():
             await asyncio.sleep(1)
             break
 
+        # Add user input to session memory (no overflow check yet)
+        user_message = {
+            "role": "user",
+            "content": user_input,
+            "timestamp": datetime.now(),
+            "message_id": session_memory.message_count,
+            "session_id": session_memory.session_id,
+            "metadata": {}
+        }
+        session_memory.recent_messages.append(user_message)
+        session_memory.message_count += 1
+        
         spinner.start()
-        # Get recent messages for AI context
-        history = session_memory.get_recent_messages()
+        # Get recent messages for AI context (now includes current user input)
+        history = session_memory.get_recent_messages_for_ai()
         decision = await think(history, current_working_directory, voice_input_enabled)
         spinner.stop()
 
@@ -84,12 +97,31 @@ async def main():
             else:
                 print(Fore.MAGENTA + f"Jarvis: {ai_response}")
             
-            # Add exchange to smart memory
-            overflow = session_memory.add_exchange(user_input, ai_response)
-            if overflow:
-                # TODO: Phase 2 - Send overflow to vector database
-                conversation_text = session_memory.format_conversation_for_storage(overflow)
-                print(Fore.BLUE + f"[Smart Memory] {len(overflow)} messages moved to long-term storage")
+            # Add AI response and check for overflow after complete exchange
+            ai_message = {
+                "role": "assistant",
+                "content": ai_response,
+                "timestamp": datetime.now(),
+                "message_id": session_memory.message_count,
+                "session_id": session_memory.session_id,
+                "metadata": {}
+            }
+            session_memory.recent_messages.append(ai_message)
+            session_memory.message_count += 1
+            
+            # Now check for overflow with complete user-assistant pair
+            if len(session_memory.recent_messages) > session_memory.max_recent_length:
+                overflow_count = len(session_memory.recent_messages) - session_memory.max_recent_length
+                # Ensure we overflow in pairs
+                if overflow_count % 2 != 0:
+                    overflow_count += 1
+                
+                overflow_messages = session_memory.recent_messages[:overflow_count]
+                session_memory.recent_messages = session_memory.recent_messages[overflow_count:]
+                
+                if overflow_messages:
+                    conversation_text = session_memory.format_conversation_for_storage(overflow_messages)
+                    print(Fore.BLUE + f"[Smart Memory] {len(overflow_messages)} messages ({len(overflow_messages)//2} pairs) moved to long-term storage")
             continue
 
         elif "save_to_memory" in decision:
@@ -101,11 +133,30 @@ async def main():
             else:
                 print(Fore.GREEN + f"Saved to memory: {fact_to_save}")
             
-            # Add to smart memory
-            overflow = session_memory.add_exchange(user_input, f"Saved to memory: {fact_to_save}")
-            if overflow:
-                conversation_text = session_memory.format_conversation_for_storage(overflow)
-                print(Fore.BLUE + f"[Smart Memory] {len(overflow)} messages moved to long-term storage")
+            # Add AI response and check for overflow after complete exchange
+            ai_message = {
+                "role": "assistant",
+                "content": f"Saved to memory: {fact_to_save}",
+                "timestamp": datetime.now(),
+                "message_id": session_memory.message_count,
+                "session_id": session_memory.session_id,
+                "metadata": {}
+            }
+            session_memory.recent_messages.append(ai_message)
+            session_memory.message_count += 1
+            
+            # Check for overflow with complete exchange
+            if len(session_memory.recent_messages) > session_memory.max_recent_length:
+                overflow_count = len(session_memory.recent_messages) - session_memory.max_recent_length
+                if overflow_count % 2 != 0:
+                    overflow_count += 1
+                
+                overflow_messages = session_memory.recent_messages[:overflow_count]
+                session_memory.recent_messages = session_memory.recent_messages[overflow_count:]
+                
+                if overflow_messages:
+                    conversation_text = session_memory.format_conversation_for_storage(overflow_messages)
+                    print(Fore.BLUE + f"[Smart Memory] {len(overflow_messages)} messages moved to long-term storage")
             continue
 
         elif "action" in decision:
@@ -152,6 +203,9 @@ async def main():
                     print(output_block)
 
                 # Add action to session memory using the optimized format
+                # Note: For actions, we replace the user input with the complete action response
+                # Remove the user input we added earlier and replace with complete exchange
+                session_memory.recent_messages.pop()  # Remove the user input added earlier
                 action_overflow = session_memory.add_action_response(
                     user_request=user_input,
                     thought=action['thought'],
