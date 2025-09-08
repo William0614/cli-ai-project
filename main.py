@@ -3,7 +3,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import asyncio
 import json
 from datetime import datetime
-from src.cli_ai.core.ai_engine import think, reflexion, speak_text_openai, classify_intent
+from src.cli_ai.core.ai_engine import think_two_phase, reflexion, speak_text_openai, classify_intent
 from src.cli_ai.tools.executor import execute_tool
 from src.cli_ai.tools.audio.speech_to_text import get_voice_input_whisper
 from src.cli_ai.utils.spinner import Spinner
@@ -43,7 +43,7 @@ async def main():
     spinner = Spinner("Thinking...")
     
     # Initialize smart memory system
-    session_memory = SessionMemoryManager(max_recent_length=6)
+    session_memory = SessionMemoryManager(max_recent_length=20)  # Increased from 6 to 20 for tool execution
     vector_memory = VectorMemoryManager()
     user_info = UserInfoManager()
     print(Fore.GREEN + f"[Smart Memory] Session started: {session_memory.session_id}")
@@ -73,10 +73,9 @@ async def main():
                     stored_count = user_info.store_user_info(extracted_info)
                     print(Fore.GREEN + f"[User Info] Extracted {stored_count} user information items before flush")
                 
-                # DON'T store conversations in vector memory - let them be forgotten
                 print(Fore.BLUE + f"[Flush] Discarding {len(current_messages)} conversation messages")
             
-            # Clear session memory - conversations are truly forgotten
+            # Clear session memory
             session_memory.recent_messages.clear()
             session_memory.message_count = 0
             print(Fore.YELLOW + "[Session Flushed] Conversation history forgotten. User preferences preserved.")
@@ -115,9 +114,10 @@ async def main():
         session_memory.message_count += 1
         
         spinner.start()
-        # Get recent messages for AI context (now includes current user input)
+        # Get recent messages for AI context (now includes retrieved memories from vector storage)
         history = session_memory.get_recent_messages_for_ai()
-        decision = await think(history, current_working_directory, voice_input_enabled, user_info)
+        # Use the new two-phase approach to reduce tool hallucinations
+        decision = await think_two_phase(history, current_working_directory, voice_input_enabled, user_info, vector_memory)
         spinner.stop()
 
         if "text" in decision:
@@ -165,48 +165,14 @@ async def main():
                         print(Fore.RED + f"[Vector Memory] Error storing overflow")
             continue
 
-        # Note: Manual save_memory removed - UserInfo extraction is now automatic
-        # All user information is extracted from natural conversation
-            
-            # Add AI response and check for overflow after complete exchange
-            ai_message = {
-                "role": "assistant",
-                "content": f"Saved to memory: {fact_to_save}",
-                "timestamp": datetime.now(),
-                "message_id": session_memory.message_count,
-                "session_id": session_memory.session_id,
-                "metadata": {}
-            }
-            session_memory.recent_messages.append(ai_message)
-            session_memory.message_count += 1
-            
-            # Check for overflow with complete exchange
-            if len(session_memory.recent_messages) > session_memory.max_recent_length:
-                overflow_count = len(session_memory.recent_messages) - session_memory.max_recent_length
-                if overflow_count % 2 != 0:
-                    overflow_count += 1
-                
-                overflow_messages = session_memory.recent_messages[:overflow_count]
-                session_memory.recent_messages = session_memory.recent_messages[overflow_count:]
-                
-                if overflow_messages:
-                    # Extract user info before storing in vector database
-                    extracted_info = await user_info.extract_user_info_from_conversation(overflow_messages)
-                    if extracted_info:
-                        stored_count = user_info.store_user_info(extracted_info)
-                        print(Fore.GREEN + f"[User Info] Extracted {stored_count} user information items")
-                    
-                    success = vector_memory.store_conversation_chunk(overflow_messages, {"reason": "overflow", "trigger": "memory_save"})
-                    print(Fore.BLUE + f"[Smart Memory] {len(overflow_messages)} messages moved to long-term storage")
-                    if success:
-                        print(Fore.GREEN + f"[Vector Memory] Overflow stored successfully")
-            continue
-
         elif "action" in decision:
             action = decision["action"]
             current_goal = action.get("current_goal", "No specific goal provided for this action.") # Extract current_goal
             
-            MAX_REPLANS = 3
+            # Enable tool execution mode to prevent memory overflow during tool use
+            session_memory.set_tool_execution_mode(True)
+            
+            MAX_REPLANS = 5  # Increased from 3 to give more chances with better prompts
             replan_count = 0
             
             while True:
@@ -271,11 +237,14 @@ async def main():
                 
                 # Get current conversation history for reflexion
                 current_history = session_memory.get_recent_messages_for_ai()
-                reflection = await reflexion(current_history, current_goal, original_user_request, voice_input_enabled)
+                reflection = await reflexion(current_history, current_goal, original_user_request, voice_input_enabled, vector_memory)
                 spinner.stop()
                 spinner.set_message("Thinking...")
                 
                 if reflection["decision"] == "finish":
+                    # Disable tool execution mode when finishing
+                    session_memory.set_tool_execution_mode(False)
+                    
                     final_response = reflection["comment"]
                     if voice_input_enabled:
                         await speak_text_openai(final_response)
@@ -290,6 +259,9 @@ async def main():
                     break
                 
                 elif reflection["decision"] == "error":
+                    # Disable tool execution mode when erroring out
+                    session_memory.set_tool_execution_mode(False)
+                    
                     error_response = f"Error: {reflection['comment']}"
                     if voice_input_enabled:
                         await speak_text_openai(error_response)
@@ -307,7 +279,10 @@ async def main():
                     if is_error:
                         replan_count += 1
                         if replan_count >= MAX_REPLANS:
-                            abort_msg = "Max replan attempts reached. Aborting task."
+                            # Disable tool execution mode when aborting due to max replans
+                            session_memory.set_tool_execution_mode(False)
+                            
+                            abort_msg = f"Max replan attempts ({MAX_REPLANS}) reached. The AI seems stuck in a loop. This might be due to: 1) Tool parameter errors, 2) Insufficient tool capabilities, or 3) Memory context issues. Please try rephrasing your request or breaking it into smaller steps."
                             if voice_input_enabled:
                                 await speak_text_openai(abort_msg)
                             else:
@@ -322,7 +297,14 @@ async def main():
                     if voice_input_enabled:
                         await speak_text_openai(reflection["comment"])
                     else:
-                        action = reflection["next_action"]
+                        print(Fore.CYAN + reflection["comment"])
+                    
+                    # Update action and current_goal for the next iteration
+                    action = reflection["next_action"]
+                    # Update current_goal if provided in the next_action
+                    if "current_goal" in action:
+                        current_goal = action["current_goal"]
+                        print(Fore.YELLOW + f"[Goal Updated] {current_goal}")
         else:
             error_msg = f"Sorry, I received an unexpected decision format: {decision}"
             if voice_input_enabled:

@@ -2,10 +2,10 @@ import json
 from typing import List, Dict, Any
 from ..tools.tools import tools_schema, get_tool_docstrings
 
-def get_react_system_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]], voice_input_enabled: bool) -> str:
+def get_need_assessment_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]], voice_input_enabled: bool) -> str:
     """
-    Returns the system prompt for the ReAct agent.
-    This prompt instructs the LLM to create a single thought and action.
+    Phase 1: Determine if the user request needs tools or can be answered directly.
+    This reduces tool hallucinations by separating need assessment from tool selection.
     """
     history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
     
@@ -13,13 +13,10 @@ def get_react_system_prompt(history: list, current_working_directory: str, recal
     if recalled_memories:
         memories_list = [f"- {m['content']} (timestamp: {m['timestamp']})" for m in recalled_memories]
         memories_str = "\n".join(memories_list)
-    if voice_input_enabled:
-        persona = "You are voice enabled. You interact with the user by speaking aloud. When you provide information or ask a question, you are speaking directly to them."
-    else:
-        persona = "You interact with the user through command line text interface."
+    
+    persona = "You are voice enabled. You interact with the user by speaking aloud." if voice_input_enabled else "You interact with the user through command line text interface."
 
-    return f"""You are an expert autonomous agent that functions as a ReAct-style agent.
-Your primary role is to analyze a user's request and the conversation history, and then decide on the single next best action to take.
+    return f"""You are an expert autonomous agent that analyzes user requests to determine if tools are needed.
 
 {persona}
 
@@ -32,106 +29,103 @@ Your primary role is to analyze a user's request and the conversation history, a
 {history_str}
 
 **Your Task:**
-Based on the user's latest request and the conversation history, generate a JSON object with your thought and the next action to take. 
+Analyze the user's latest request and determine if it needs tools to complete or can be answered directly with text.
 
-**IMPORTANT: If a user request is ambiguous or lacks necessary details, ask for clarification using the "text" response. Keep clarification questions short and natural.**
+**Guidelines for Direct Response (no tools needed):**
+- Simple questions, greetings, explanations
+- General knowledge queries
+- Conversations that don't require system interaction
+- Clarifications or confirmations
 
-You have two choices for the top-level key in the JSON response:
+**Guidelines for Tool Usage (tools needed):**
+- File operations (read, write, list)
+- Shell commands or system tasks
+- Image analysis or processing
+- Directory operations
+- Any task requiring system interaction
 
-1.  **"text"**: If the user's request is a simple question, a greeting, or can be answered directly without tools, use this key. The value should be the response string.
-    Example: {json.dumps({"text": "Hello! How can I help you today?"})}
+**Response Format:**
+Return a JSON object with these exact keys:
 
-2.  **"action" and "original_user_request"**: If the request requires a tool, your JSON response **MUST** cotain these two top-level keys.  
-    *   **`original_user_request`**: A string containing the verbatim user prompt that initiated the current task. You must look back in the conversation history to find the root of the request, 
-    especially if the last message was a clarification. The value should be a dictionary containing the tool to use and the arguments.
-    *   **`action`**: A dictionary containing the following keys:
-        *   **"thought"**: A brief description of what you are trying to do.
-        *   **"current_goal"**: A concise statement of the specific goal this action aims to achieve. This should be a sub-goal of the overall user request.
-        *   **"tool"**: The name of the tool to use. You **MUST ONLY** use the tools defined in the schema below.
-        *   **"args"**: A dictionary of arguments for the tool. **USE EXACT PARAMETER NAMES FROM SCHEMA.**
-        *   **"is_critical"**: (REQUIRED) A boolean field that determines if user confirmation is needed before execution.
-            **Determining `is_critical`:**
-            *   `write_file`: Always `true`.
-            *   `run_shell_command`: `true` if the command modifies the system or data (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`, `git commit`, `git push`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`, `git status`, `git log`).
-            *   All other tools (`read_file`, `list_directory`, `describe_image`, `find_similar_images`): Always `false`.
+{{
+    "needs_tools": boolean,
+    "reasoning": "Brief explanation of your decision",
+    "response": "If needs_tools is false, provide the direct response here. If true, leave empty."
+}}
 
-    **Example Action (List Directory):**
-    {json.dumps({
-        "original_user_request": "Can you show me the files in the current directory?",
-        "action": {
-            "thought": "I need to list the files in the current directory.",
-            "current_goal": "List all files in the current directory.",
-            "tool": "list_directory",
-            "args": {"path": "."},
-            "is_critical": False
-        }
-    })}
+**Examples:**
 
-    **Example Action (Write File):**
-    {json.dumps({
-        "original_user_request": "Can you create a file named 'report.txt' with some content?",
-        "action": {
-            "thought": "I need to create a new file named 'report.txt' and write some content into it.",
-            "current_goal": "Create a file named 'report.txt' with specified content.",
-            "tool": "write_file",
-            "args": {"file_path": "report.txt", "content": "This is the content of the report."},
-            "is_critical": True
-        }
-    })}
+Direct response (no tools):
+{json.dumps({"needs_tools": False, "reasoning": "This is a greeting that requires no system interaction", "response": "Hello! How can I help you today?"})}
 
-    **Example Action (Delete File - CRITICAL):**
-    {json.dumps({
-        "original_user_request": "Please delete the old_file.txt",
-        "action": {
-            "thought": "I need to delete the file 'old_file.txt' as requested.",
-            "current_goal": "Delete old_file.txt from the system.",
-            "tool": "run_shell_command",
-            "args": {"command": "rm old_file.txt"},
-            "is_critical": True
-        }
-    })}
+Needs tools:
+{json.dumps({"needs_tools": True, "reasoning": "User wants to list files, which requires the list_directory tool", "response": ""})}
 
-    **Example Action (Describe Image):**
-    {json.dumps({
-        "original_user_request": "What does the image abc123.jpg show?",
-        "action": {
-            "thought": "I need to analyze the specific image file to describe what it shows.",
-            "current_goal": "Describe the content of abc123.jpg.",
-            "tool": "describe_image",
-            "args": {
-                "image_path": "./image/abc123.jpg",
-                "question": "What is in this image?"
-            },
-            "is_critical": False
-        }
-    })}
+Analyze the user's request now and respond with the JSON format above.
+"""
 
-    **Example Action (Find Similar Images):**
-    {json.dumps({
-        "original_user_request": "Find similar images to the first image in the images folder.",
-        "action": {
-            "thought": "I need to find images visually similar to 'image/first_image.jpg' in the images folder.",
-            "current_goal": "Find the top 5 similar images.",
-            "tool": "find_similar_images",
-            "args": {
-                "image_path": "image/first_image.jpg",
-                "search_directory": "image",
-                "top_k": 5,
-                "threshold": 0.5
-            },
-            "is_critical": False
-        }
-    })}
+def get_tool_selection_prompt(history: list, current_working_directory: str, original_user_request: str, voice_input_enabled: bool) -> str:
+    """
+    Phase 2: Select appropriate tools to complete the task.
+    Only called when Phase 1 determines tools are needed.
+    """
+    history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
+    
+    persona = "You are voice enabled." if voice_input_enabled else "You are text-based."
+
+    return f"""You are an expert autonomous agent that executes tasks using available tools.
+
+{persona}
+
+**Current Working Directory:** {current_working_directory}
+
+**Original User Request:** {original_user_request}
+
+**Conversation History:**
+{history_str}
 
 **Available Tools:**
 {json.dumps(tools_schema, indent=2)}
 
-**CRITICAL: Use ONLY the tools listed above. For images use 'describe_image' and 'find_similar_images'.**
+**Your Task:**
+The user request requires tools to complete. Analyze the available tools and determine:
+1. Can you complete this task with the available tools?
+2. What is the next action to take?
 
-Now, analyze the user's request and generate the appropriate JSON response.
+**CRITICAL: Use ONLY the tools listed above with their EXACT parameter names.**
+
+**Response Format:**
+Return a JSON object with one of these structures:
+
+**If you CAN complete the task:**
+{{
+    "can_complete": true,
+    "original_user_request": "{original_user_request}",
+    "action": {{
+        "thought": "Brief description of what you are trying to do",
+        "current_goal": "Specific goal this action aims to achieve",
+        "tool": "exact_tool_name_from_schema",
+        "args": {{"exact_parameter_name": "value"}},
+        "is_critical": true/false
+    }}
+}}
+
+**If you CANNOT complete the task:**
+{{
+    "can_complete": false,
+    "reasoning": "Explanation of why the task cannot be completed with available tools",
+    "suggestion": "Alternative suggestion for the user"
+}}
+
+**Critical Instructions for is_critical field:**
+- write_file: always true
+- run_shell_command: true for destructive operations (rm, sudo, mv, delete, format, kill), false for safe operations (ls, pwd, echo, git status)
+- All other tools (read_text_file, list_directory, describe_image, find_similar_images): always false
+
+Generate your response now.
 """
 
-def get_reflexion_prompt(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool) -> str:
+def get_reflexion_prompt(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool, relevant_memories: list = None) -> str:
     """
     Generates a prompt for the LLM to reflect on the result of an action.
     """
@@ -141,6 +135,14 @@ def get_reflexion_prompt(history: list, current_goal: str, original_user_request
         persona = "You are voice enabled."
     else:
         persona = "You are text-based."
+    
+    # Include relevant memories if available
+    memory_context = ""
+    if relevant_memories:
+        memory_context = "\n**Relevant Past Experiences:**\n"
+        for i, memory in enumerate(relevant_memories[:3], 1):  # Limit to 3 most relevant
+            memory_context += f"{i}. {memory}\n"
+        memory_context += "\nUse these past experiences to inform your decision-making and avoid repeating mistakes.\n"
 
     return f"""You are a ReAct-style agent. You have just performed an action and observed the result.
 
@@ -151,7 +153,7 @@ def get_reflexion_prompt(history: list, current_goal: str, original_user_request
 
 **Original User Request:**
 {original_user_request}
-
+{memory_context}
 **Conversation History:**
 {history_str}
 
@@ -162,9 +164,16 @@ If the original user request has been fully addressed and completed, you MUST re
 1.  **"continue"**: If the task is not yet complete and you need to perform another action.
     *   **"comment"**: A brief explanation of why you are continuing and what you plan to do next.
     *   **"next_action"**: A dictionary containing the next tool to use and the arguments. **MUST include "is_critical" field:**
-        *   `write_file`: Always `true`.
-        *   `run_shell_command`: `true` if the command modifies the system or data (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`, `git commit`, `git push`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`, `git status`, `git log`).
-        *   All other tools (`read_file`, `list_directory`, `describe_image`, `find_similar_images`): Always `false`.
+        *   **"thought"**: What you're trying to accomplish with this action.
+        *   **"current_goal"**: The UPDATED current goal for this next step.
+        *   **"tool"**: The tool name to use.
+        *   **"args"**: The arguments for the tool.
+        *   **"is_critical"**: Risk assessment:
+            *   `write_file`: Always `true`.
+            *   `run_shell_command`: `true` if the command modifies the system or data (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`, `git commit`, `git push`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`, `git status`, `git log`).
+            *   All other tools (`read_file`, `list_directory`, `describe_image`, `find_similar_images`): Always `false`.
+
+**Make goals SPECIFIC and PROGRESSIVE:**
 
 2.  **"finish"**: If the task is complete and you have the final answer for the user.
     *   **"comment"**: The final answer for the user.
@@ -175,11 +184,12 @@ If the original user request has been fully addressed and completed, you MUST re
 **Example Continue:**
 {json.dumps({
     "decision": "continue",
-    "comment": "I have listed the files. Now I need to read the content of 'file.txt'.",
+    "comment": "I have listed the files. Now I need to analyze the first image to understand what type of content it contains.",
     "next_action": {
-        "thought": "Read the content of 'file.txt'.",
-        "tool": "read_text_file",
-        "args": {"file_path": "file.txt"},
+        "thought": "Analyze the first image to identify its content and determine grouping strategy.",
+        "current_goal": "Analyze images to identify their content and determine grouping categories",
+        "tool": "describe_image",
+        "args": {"image_path": "assets/images/first_image.jpg", "question": "What animal or object is shown in this image?"},
         "is_critical": False
     }
 })}
@@ -199,7 +209,7 @@ If the original user request has been fully addressed and completed, you MUST re
 Now, analyze the conversation history and generate the appropriate JSON response.
 """
 
-def get_reflexion_prompt_with_tools(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool, error_observation: str, tool_docs: str) -> str:
+def get_reflexion_prompt_with_tools(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool, error_observation: str, tool_docs: str, relevant_memories: list = None) -> str:
     """
     Enhanced reflexion prompt that includes detailed tool documentation when tool errors are detected.
     """
@@ -209,6 +219,14 @@ def get_reflexion_prompt_with_tools(history: list, current_goal: str, original_u
         persona = "You are voice enabled."
     else:
         persona = "You are text-based."
+    
+    # Include relevant memories if available
+    memory_context = ""
+    if relevant_memories:
+        memory_context = "\n**Relevant Past Experiences:**\n"
+        for i, memory in enumerate(relevant_memories[:3], 1):  # Limit to 3 most relevant
+            memory_context += f"{i}. {memory}\n"
+        memory_context += "\nUse these past experiences to avoid repeating the same mistakes and learn from previous tool errors.\n"
 
     return f"""You are a ReAct-style agent. You have just performed an action that resulted in a TOOL ERROR.
 
@@ -222,7 +240,7 @@ def get_reflexion_prompt_with_tools(history: list, current_goal: str, original_u
 
 **Last Error Observation:**
 {error_observation}
-
+{memory_context}
 **Conversation History:**
 {history_str}
 
@@ -245,6 +263,7 @@ Your task is to analyze the error and decide what to do next. You have three cho
     *   **"next_action"**: The corrected action with proper tool name and parameters in this EXACT format:
         {{
             "thought": "explanation of what you're trying to do",
+            "current_goal": "updated goal for this step",
             "tool": "tool_name_here",
             "args": {{"parameter1": "value1", "parameter2": "value2"}},
             "is_critical": true/false (true for write_file, rm/delete commands; false for read/list operations)

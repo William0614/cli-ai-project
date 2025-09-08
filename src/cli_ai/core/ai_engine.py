@@ -2,7 +2,7 @@ import os
 import json
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
-from .prompts import get_react_system_prompt, get_reflexion_prompt, get_final_summary_prompt, get_reflexion_prompt_with_tools
+from .prompts import get_reflexion_prompt, get_final_summary_prompt, get_reflexion_prompt_with_tools, get_need_assessment_prompt, get_tool_selection_prompt
 from ..utils.os_helpers import get_os_info
 import soundfile as sf
 import sounddevice as sd
@@ -28,7 +28,7 @@ def get_client():
         client = AsyncOpenAI(api_key=openai_api_key)
     return client
 
-def count_tokens(text: str, model: str = "gpt-4") -> int:
+def count_tokens(text: str, model: str = "gpt-5-nano") -> int:
     """Count tokens in text. Uses tiktoken if available, otherwise estimates."""
     if HAS_TIKTOKEN:
         try:
@@ -63,12 +63,34 @@ def get_latest_user_input(history: list) -> str:
             return message["content"]
     return ""
 
-async def think(history: list, current_working_directory: str, voice_input_enabled: bool, user_info_manager=None) -> dict:
-    """Creates a thought and action using the ReAct prompt."""
+async def think_two_phase(history: list, current_working_directory: str, voice_input_enabled: bool, user_info_manager=None, vector_memory_manager=None) -> dict:
+    """
+    NEW: Two-phase thinking approach to reduce tool hallucinations.
+    Phase 1: Assess if tools are needed
+    Phase 2: If needed, select appropriate tools
+    """
     latest_user_message = get_latest_user_input(history)
     
-    # Get user information for context
+    # Get relevant memories from vector database
     recalled_memories = []
+    
+    # 1. Search for relevant conversation history from vector storage
+    if vector_memory_manager and latest_user_message:
+        try:
+            relevant_contexts = vector_memory_manager.search_relevant_context(
+                query=latest_user_message,
+                limit=3,
+                min_similarity=0.5
+            )
+            for context in relevant_contexts:
+                recalled_memories.append({
+                    'content': context.get('content', ''),
+                    'timestamp': context.get('timestamp', 'retrieved_memory')
+                })
+        except Exception as e:
+            print(f"[Vector Memory] Error retrieving context: {e}")
+    
+    # 2. Get user information for context
     if user_info_manager:
         user_info_data = user_info_manager.get_user_info()
         if user_info_data:
@@ -79,40 +101,85 @@ async def think(history: list, current_working_directory: str, voice_input_enabl
                     'timestamp': info.get('timestamp', 'user_info')
                 })
 
-    BASE_PROMPT = "You are a cli-assistant that performs user's tasks with the tools you have."
-    system_prompt = (
-        BASE_PROMPT + "\n" + 
+    # PHASE 1: Assess if tools are needed
+    phase1_prompt = (
+        "You are a cli-assistant that analyzes user requests.\n" + 
         get_os_info() + "\n" + 
-        get_react_system_prompt(history, current_working_directory, recalled_memories, voice_input_enabled)
+        get_need_assessment_prompt(history, current_working_directory, recalled_memories, voice_input_enabled)
     )
 
-    # Debug: Print the complete prompt being sent to LLM
-    print_prompt_debug(system_prompt, latest_user_message, "MAIN THINK FUNCTION")
+    print_prompt_debug(phase1_prompt, latest_user_message, "PHASE 1: NEED ASSESSMENT")
 
     try:
-        response = await get_client().chat.completions.create(
+        phase1_response = await get_client().chat.completions.create(
             model="gpt-5-mini",
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": phase1_prompt},
                 {"role": "user", "content": latest_user_message}
             ],
             response_format={"type": "json_object"}
         )
         
-        raw_response_content = response.choices[0].message.content
-        decision = json.loads(raw_response_content)
+        phase1_result = json.loads(phase1_response.choices[0].message.content)
         
-        # Note: save_to_memory removed - UserInfo extraction is now automatic
+        # If no tools needed, return direct response
+        if not phase1_result.get("needs_tools", False):
+            return {"text": phase1_result.get("response", "I understand, but I don't have a specific response.")}
         
-        return decision
+        # PHASE 2: Select appropriate tools
+        phase2_prompt = (
+            "You are a cli-assistant that executes tasks with available tools.\n" + 
+            get_os_info() + "\n" + 
+            get_tool_selection_prompt(history, current_working_directory, latest_user_message, voice_input_enabled)
+        )
+
+        print_prompt_debug(phase2_prompt, latest_user_message, "PHASE 2: TOOL SELECTION")
+
+        phase2_response = await get_client().chat.completions.create(
+            model="gpt-5-mini",
+            messages=[
+                {"role": "system", "content": phase2_prompt},
+                {"role": "user", "content": latest_user_message}
+            ],
+            response_format={"type": "json_object"}
+        )
+        
+        phase2_result = json.loads(phase2_response.choices[0].message.content)
+        
+        # If tools can't complete the task, return explanation
+        if not phase2_result.get("can_complete", False):
+            return {
+                "text": f"I cannot complete this task with the available tools. {phase2_result.get('reasoning', '')} {phase2_result.get('suggestion', '')}"
+            }
+        
+        # Return the action from phase 2
+        return {
+            "action": phase2_result["action"],
+            "original_user_request": phase2_result.get("original_user_request", latest_user_message)
+        }
 
     except Exception as e:
-        print(f"Error: {e}")
-        return {"text": "Sorry, an error occurred."}
+        print(f"Error in two-phase thinking: {e}")
+        return {"text": "Sorry, an error occurred while processing your request."}
 
-async def reflexion(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool) -> str:
+async def reflexion(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool, vector_memory_manager=None) -> str:
     """Asks the LLM to reflect on the result of an action."""
     try:
+        # Retrieve relevant memories from vector database if available
+        relevant_memories = []
+        if vector_memory_manager:
+            try:
+                # Search for relevant context based on current goal and recent actions
+                search_query = f"{current_goal} {original_user_request}"
+                if history:
+                    # Add recent action context to search
+                    recent_actions = " ".join([str(msg.get('content', ''))[:100] for msg in history[-3:]])
+                    search_query += f" {recent_actions}"
+                
+                relevant_memories = vector_memory_manager.search_relevant_context(search_query, limit=5)
+            except Exception as e:
+                print(f"Warning: Could not retrieve relevant memories for reflexion: {e}")
+        
         latest_user_message = get_latest_user_input(history)
         
         tool_error_detected = False
@@ -150,11 +217,11 @@ async def reflexion(history: list, current_goal: str, original_user_request: str
             from ..tools.tools import get_tool_docstrings
             system_prompt = get_reflexion_prompt_with_tools(
                 history, current_goal, original_user_request, voice_input_enabled, 
-                last_observation, get_tool_docstrings()
+                last_observation, get_tool_docstrings(), relevant_memories
             )
             context = "ENHANCED REFLEXION (Tool Error Detected)"
         else:
-            system_prompt = get_reflexion_prompt(history, current_goal, original_user_request, voice_input_enabled)
+            system_prompt = get_reflexion_prompt(history, current_goal, original_user_request, voice_input_enabled, relevant_memories)
             context = "NORMAL REFLEXION"
 
         # Debug: Print the complete reflexion prompt being sent to LLM

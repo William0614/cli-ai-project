@@ -2,19 +2,11 @@
 
 __version__ = "0.1.0"
 
-from .core.ai_engine import think, reflexion, speak_text_openai, classify_intent
+from .core.ai_engine import think_two_phase, reflexion, speak_text_openai, classify_intent
 from .tools.executor import execute_tool
 
 __all__ = [
-    "think",
-    "reflexion", 
-    "speak_text_openai",
-    "classify_intent",
-    "execute_tool"
-]
-
-__all__ = [
-    "think",
+    "think_two_phase",
     "reflexion", 
     "speak_text_openai",
     "classify_intent",
