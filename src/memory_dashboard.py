@@ -11,11 +11,19 @@ from datetime import datetime
 from typing import Dict, List, Any
 import os
 
-app = Flask(__name__)
+# Get the project root directory (one level up from src/)
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+template_dir = os.path.join(project_root, 'templates')
+
+app = Flask(__name__, template_folder=template_dir)
 
 class MemoryDashboard:
-    def __init__(self, db_path: str = "agent_memory.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            # Default to agent_memory.db in project root
+            self.db_path = os.path.join(project_root, "agent_memory.db")
+        else:
+            self.db_path = db_path
     
     def get_user_profile(self) -> Dict[str, List[Dict]]:
         """Get all user information grouped by category."""
