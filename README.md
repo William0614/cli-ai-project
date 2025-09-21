@@ -29,7 +29,7 @@ An intelligent command-line assistant with advanced ReAct reasoning, vision capa
 - **Extensible Tool System**: Modular architecture for adding new capabilities
 
 ## Agent Architecture
-![CLI AI Agent System Architecture](https://github.com/William0614/cli-ai-project/blob/feat/agent-workspace/assets/cli-ai-agent.png?raw=true)
+![CLI AI Agent System Architecture](https://github.com/William0614/cli-ai-project/blob/main/assets/cli-ai-agent.png?raw=true)
 
 
 ## 📁 Enhanced Project Structure
