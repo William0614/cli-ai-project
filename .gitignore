@@ -3,6 +3,6 @@ __pycache__
 workspaces
 backup
 assets
-.env
 .vscode
+.env
 agent_memory.db

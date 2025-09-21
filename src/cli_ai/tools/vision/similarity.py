@@ -21,7 +21,7 @@ def get_image_embedding(image_path: str, model_name: str = "facebook/dinov3-vitl
         # Open and prepare the image
         image = Image.open(image_path).convert("RGB")
 
-        # Process the image and run it thorugh the DINOv3 model
+        # Process the image and run it through the DINOv3 model
         with torch.no_grad(): #Use no_grad for faster inference
             inputs = processor(images=image, return_tensors ="pt")
             outputs = model(**inputs)

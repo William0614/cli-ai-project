@@ -6,12 +6,9 @@ import os
 from colorama import Fore
 from .tools import available_tools
 from ..utils.spinner import Spinner
-
-current_working_directory = os.getcwd()
+from ..utils.directory_manager import directory_manager
 
 async def execute_tool(tool_name: str, tool_args: dict) -> dict:
-    global current_working_directory
-
     if tool_name == "run_shell_command":
         command = tool_args.get("command", "")
         if isinstance(command, str):
@@ -19,25 +16,20 @@ async def execute_tool(tool_name: str, tool_args: dict) -> dict:
                 new_path = command.strip()[3:].strip()
                 parsed_path = shlex.split(new_path)
                 new_path = parsed_path[0]
-                if os.path.isabs(new_path):
-                    target_path = new_path
-                else:
-                    target_path = os.path.join(current_working_directory, new_path)
-
-                target_path = os.path.normpath(target_path)
-
-                if os.path.isdir(target_path):
-                    current_working_directory = target_path
+                
+                # Use directory manager to change directory
+                if directory_manager.change_directory(new_path):
                     return {
                         "tool name": tool_name,
                         "status": "Success",
-                        "output": f"Changed directory to {current_working_directory}",
+                        "output": f"Changed directory to {directory_manager.current_directory}",
                     }
                 else:
                     return {"tool name": tool_name, "status": "Error", "output": f"Directory not found: {new_path}"}
             tool_args["command"] = shlex.split(command)
 
-        tool_args["directory"] = current_working_directory
+        # Always use the current directory from directory manager
+        tool_args["directory"] = directory_manager.current_directory
 
     if tool_name in available_tools:
         tool_function = available_tools[tool_name]

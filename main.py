@@ -7,14 +7,13 @@ from src.cli_ai.core.ai_engine import think, reflexion, speak_text_openai, class
 from src.cli_ai.tools.executor import execute_tool
 from src.cli_ai.tools.audio.speech_to_text import get_voice_input_whisper
 from src.cli_ai.utils.spinner import Spinner
+from src.cli_ai.utils.directory_manager import directory_manager
 from src.cli_ai.memory import SessionMemoryManager, VectorMemoryManager, UserInfoManager
 from colorama import init, Fore
 
 init(autoreset=True)
 
 # --- Main Application Logic ---
-
-current_working_directory = os.getcwd()
 
 async def get_user_input(voice_input_enabled: bool) -> tuple[str, bool]:
     user_input = ""
@@ -113,10 +112,20 @@ async def main():
         session_memory.recent_messages.append(user_message)
         session_memory.message_count += 1
         
+        # Intelligent task memory management - only reset for truly new tasks
+        from src.cli_ai.core.prompts import reset_task_memory, _current_task_memory
+        from src.cli_ai.utils.task_continuity import should_reset_task_memory
+        
+        if should_reset_task_memory(user_input, _current_task_memory):
+            print(Fore.BLUE + f"[Task Memory] Starting new task: {user_input[:50]}{'...' if len(user_input) > 50 else ''}")
+            reset_task_memory(user_input)
+        else:
+            print(Fore.CYAN + f"[Task Memory] Continuing existing task...")
+        
         spinner.start()
         # Get recent messages for AI context (now includes retrieved memories from vector storage)
         history = session_memory.get_recent_messages_for_ai()
-        decision = await think(history, current_working_directory, voice_input_enabled, user_info, vector_memory)
+        decision = await think(history, directory_manager.current_directory, voice_input_enabled, user_info, vector_memory)
         spinner.stop()
 
         if "text" in decision:

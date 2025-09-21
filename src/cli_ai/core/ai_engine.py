@@ -2,7 +2,7 @@ import os
 import json
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
-from .prompts import get_react_system_prompt, get_reflexion_prompt, get_final_summary_prompt, get_reflexion_prompt_with_tools
+from .prompts import get_react_system_prompt, get_reflexion_prompt, get_final_summary_prompt, get_reflexion_prompt_with_tools, get_task_context_string
 from ..utils.os_helpers import get_os_info
 import soundfile as sf
 import sounddevice as sd
@@ -161,17 +161,82 @@ def record_action_result(tool: str, args: dict, result: dict):
     if result and result.get("status") == "Success":
         output = result.get("output", {})
         
-        # For directory listings, store the file list
+        # For directory listings, store the file list and track analysis progress
         if tool == "list_directory" and "result" in output:
-            update_task_knowledge(f"files_in_{args.get('path', 'unknown')}", output["result"])
+            file_list = output["result"]
+            update_task_knowledge(f"files_in_{args.get('path', 'unknown')}", file_list)
+            
+            # For sorting tasks, track which files need analysis
+            if any(keyword in _current_task_memory.get("original_request", "").lower() 
+                   for keyword in ["sort", "organize", "group", "classify", "species"]):
+                analyzed_images = [k for k in _current_task_memory["knowledge"].keys() if k.startswith("image_analysis_")]
+                remaining_files = [f for f in file_list if f not in [k.replace("image_analysis_", "") for k in analyzed_images]]
+                update_task_knowledge("remaining_files_to_analyze", remaining_files)
         
-        # For image descriptions, store the analysis
+        # For image descriptions, store the analysis and track species
         if tool == "describe_image" and "response" in output:
-            update_task_knowledge(f"image_analysis_{args.get('image_path', 'unknown')}", output["response"])
+            image_path = args.get('image_path', 'unknown')
+            analysis = output["response"]
+            update_task_knowledge(f"image_analysis_{image_path}", analysis)
+        
+        # For similarity searches, store the clusters
+        if tool == "find_similar_images" and "result" in output:
+            query_image = args.get('image_path', 'unknown')
+            similar_images = output["result"]
+            
+            if isinstance(similar_images, list) and len(similar_images) > 0:
+                # Store the similarity cluster
+                cluster_images = [query_image] + [img.get('image_path', img.get('path', '')) 
+                                                for img in similar_images if isinstance(img, dict)]
+                update_task_knowledge(f"similarity_cluster_{query_image}", cluster_images)
+                
+                # For sorting tasks, try to identify what this cluster represents
+                if "sort" in _current_task_memory.get("original_request", "").lower():
+                    update_task_knowledge(f"cluster_size_{query_image}", len(cluster_images))
+                    
+                    # Store remaining unclustered files
+                    all_files = []
+                    for key, value in _current_task_memory["knowledge"].items():
+                        if "files_in_" in key and isinstance(value, list):
+                            all_files = value
+                            break
+                    
+                    # Find files not yet in any cluster
+                    clustered_files = set()
+                    for key, value in _current_task_memory["knowledge"].items():
+                        if "similarity_cluster_" in key and isinstance(value, list):
+                            clustered_files.update(value)
+                    
+                    unclustered = [f for f in all_files if f not in clustered_files]
+                    update_task_knowledge("remaining_unclustered_files", unclustered)
 
 async def reflexion(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool, vector_memory_manager=None) -> str:
     """Asks the LLM to reflect on the result of an action."""
     try:
+        # Import here to avoid circular imports
+        from .prompts import _current_task_memory
+        from ..utils.task_progress import analyze_task_progress
+        
+        # Analyze task progress to guide reflexion
+        latest_action = None
+        latest_result = None
+        if _current_task_memory.get("actions_taken"):
+            latest_action_data = _current_task_memory["actions_taken"][-1]
+            latest_action = {
+                "tool": latest_action_data.get("tool"),
+                "args": latest_action_data.get("args", {})
+            }
+            latest_result = latest_action_data.get("result", {})
+        
+        progress_analysis = analyze_task_progress(_current_task_memory, latest_action, latest_result)
+        
+        # Simple check: if progress analysis suggests we should NOT continue (repetitive action or safety limit)
+        if not progress_analysis.get('should_continue', True):
+            return {
+                "decision": "finish",
+                "comment": f"Stopping to prevent repetitive behavior. {progress_analysis.get('reason', '')}"
+            }
+        
         # Retrieve relevant memories from vector database if available
         relevant_memories = []
         if vector_memory_manager:
@@ -224,11 +289,11 @@ async def reflexion(history: list, current_goal: str, original_user_request: str
             from ..tools.tools import get_tool_docstrings
             system_prompt = get_reflexion_prompt_with_tools(
                 history, current_goal, original_user_request, voice_input_enabled, 
-                last_observation, get_tool_docstrings(), relevant_memories
+                last_observation, get_tool_docstrings(), relevant_memories, progress_analysis
             )
             context = "ENHANCED REFLEXION (Tool Error Detected)"
         else:
-            system_prompt = get_reflexion_prompt(history, current_goal, original_user_request, voice_input_enabled, relevant_memories)
+            system_prompt = get_reflexion_prompt(history, current_goal, original_user_request, voice_input_enabled, relevant_memories, progress_analysis)
             context = "NORMAL REFLEXION"
 
         # Debug: Print the complete reflexion prompt being sent to LLM

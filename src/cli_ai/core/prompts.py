@@ -47,23 +47,48 @@ def update_task_knowledge(key: str, value: Any):
 def get_task_context_string() -> str:
     """Get a formatted string of current task context."""
     if not _current_task_memory["actions_taken"]:
-        return "No actions taken yet in this task."
+        return "No active task - ready to start new work."
     
-    context = f"Task: {_current_task_memory['original_request']}\n"
-    context += f"Current Goal: {_current_task_memory['current_goal']}\n"
-    context += f"Actions Taken: {len(_current_task_memory['actions_taken'])}\n"
+    context = f"🎯 ACTIVE TASK: {_current_task_memory['original_request']}\n"
+    context += f"📊 PROGRESS: {len(_current_task_memory['actions_taken'])} actions completed\n"
     
+    # Show accumulated knowledge in a more structured way
     if _current_task_memory["knowledge"]:
-        context += "Knowledge Accumulated:\n"
+        context += "\n💡 KNOWLEDGE ACCUMULATED:\n"
         for key, value in _current_task_memory["knowledge"].items():
-            context += f"  {key}: {str(value)[:100]}{'...' if len(str(value)) > 100 else ''}\n"
+            # Format the knowledge better for decision making
+            if "files_in_" in key:
+                path = key.replace("files_in_", "")
+                context += f"  📁 Directory {path}: {len(value) if isinstance(value, list) else '?'} files found\n"
+            elif "similarity_cluster_" in key:
+                cluster_name = key.split('/')[-1] if '/' in key else key.replace('similarity_cluster_', '')
+                cluster_size = len(value) if isinstance(value, list) else 1
+                context += f"  🔗 Cluster {cluster_name}: {cluster_size} similar images\n"
+            elif "remaining_unclustered_files" in key:
+                remaining_count = len(value) if isinstance(value, list) else value
+                context += f"  ⏳ Unclustered files: {remaining_count} remaining\n"
+            elif "image_analysis_" in key:
+                image_name = key.split('/')[-1] if '/' in key else key.replace('image_analysis_', '')
+                context += f"  🖼️  {image_name}: {str(value)[:150]}{'...' if len(str(value)) > 150 else ''}\n"
+            elif "species_" in key:
+                image_name = key.split('/')[-1] if '/' in key else key.replace('species_', '')
+                context += f"  🏷️  {image_name} → Species: {value}\n"
+            elif "cluster_size_" in key:
+                continue  # Skip, already shown in similarity_cluster_
+            else:
+                context += f"  ℹ️  {key}: {str(value)[:100]}{'...' if len(str(value)) > 100 else ''}\n"
     
-    # Show recent actions to prevent redundancy
-    recent_actions = _current_task_memory["actions_taken"][-3:] if _current_task_memory["actions_taken"] else []
+    # Show recent actions to prevent redundancy with better formatting
+    recent_actions = _current_task_memory["actions_taken"][-5:] if _current_task_memory["actions_taken"] else []
     if recent_actions:
-        context += "Recent Actions:\n"
+        context += f"\n📝 RECENT ACTIONS (avoid repeating):\n"
         for i, action in enumerate(recent_actions, 1):
-            context += f"  {i}. {action['tool']}({action['args']}) - {action['thought']}\n"
+            status = "✅" if action.get("result", {}).get("status") == "Success" else "❌"
+            args_summary = str(action['args']).replace('/Users/kimboyoon/Desktop/cli-ai-project/', '').replace('{"path": "', '').replace('"}', '')[:50]
+            context += f"  {status} {action['tool']}({args_summary}) → {action.get('result', {}).get('status', 'pending')}\n"
+    
+    # Add guidance for next steps
+    context += "\n⚡ TASK CONTINUATION: Build on knowledge above - continue where you left off!"
     
     return context
 
@@ -105,8 +130,13 @@ Your primary role is to analyze a user's request and the conversation history, a
 **Recalled Memories:**
 {memories_str}
 
-**Task Context (to prevent redundant actions):**
+**TASK PROGRESS CONTEXT:**
 {task_context}
+
+**CRITICAL: AVOID REDUNDANT ACTIONS**
+- If you have already performed an action and have the results, DO NOT repeat it
+- Use the knowledge you've accumulated to make logical progress
+- For multi-step tasks, proceed sequentially through the remaining steps
 
 **Conversation History:**
 {history_str}
@@ -114,11 +144,12 @@ Your primary role is to analyze a user's request and the conversation history, a
 **Your Task:**
 Based on the user's latest request and the conversation history, generate a JSON object with your thought and the next action to take. 
 
-**IMPORTANT: Before choosing a tool, consider:**
-1. What exactly does the user want to achieve?
-2. What tools are available to me?
-3. What is the logical sequence of steps needed?
-4. Which tool should I use for the NEXT step?
+**PLANNING CHECKLIST - Consider in order:**
+1. What is the user's OVERALL goal?
+2. What information do I ALREADY have from previous actions?
+3. What is the NEXT logical step to complete the goal?
+4. Have I already done this step? (Check task context above)
+5. What tool should I use for this NEXT step?
 
 **IMPORTANT: If a user request is ambiguous or lacks necessary details, ask for clarification using the "text" response. Keep clarification questions short and natural.**
 
@@ -140,6 +171,19 @@ You have two choices for the top-level key in the JSON response:
             *   `write_file`: Always `true`.
             *   `run_shell_command`: `true` if the command modifies the system or data (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`, `git commit`, `git push`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`, `git status`, `git log`).
             *   All other tools (`read_file`, `list_directory`, `describe_image`, `find_similar_images`): Always `false`.
+
+    **CRITICAL: IMAGE SORTING BY SPECIES WORKFLOW**
+    If user asks to sort images by species, follow this EXACT sequence (don't skip steps):
+    
+    1. **List directory** to see all images
+    2. **Analyze first image** with describe_image to identify species  
+    3. **Find similar images** to first image to form first group
+    4. **Pick next unclustered image** and analyze it with describe_image
+    5. **Find similar images** to that image to form second group
+    6. **Repeat** until all images are grouped
+    7. **Create directories** for each species and move files
+    
+    **NEVER re-run find_similar_images on the same image twice!**
 
     **Example Action (List Directory):**
     {json.dumps({
@@ -217,7 +261,7 @@ You have two choices for the top-level key in the JSON response:
 Now, analyze the user's request and generate the appropriate JSON response.
 """
 
-def get_reflexion_prompt(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool, relevant_memories: list = None) -> str:
+def get_reflexion_prompt(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool, relevant_memories: list = None, progress_analysis: dict = None) -> str:
     """
     Generates a prompt for the LLM to reflect on the result of an action.
     """
@@ -236,6 +280,16 @@ def get_reflexion_prompt(history: list, current_goal: str, original_user_request
             memory_context += f"{i}. {memory}\n"
         memory_context += "\nUse these past experiences to inform your decision-making and avoid repeating mistakes.\n"
 
+    # CRITICAL: Include task memory context for better decision making
+    task_context = get_task_context_string()
+    
+    # Include progress analysis if available
+    progress_context = ""
+    if progress_analysis:
+        progress_context = f"\n**AUTOMATED PROGRESS ANALYSIS:**\n"
+        progress_context += f"Should Continue: {progress_analysis.get('should_continue', True)}\n"
+        progress_context += f"Analysis: {progress_analysis.get('reason', '')}\n"
+
     return f"""You are a ReAct-style agent. You have just performed an action and observed the result.
 
 {persona}
@@ -246,10 +300,26 @@ def get_reflexion_prompt(history: list, current_goal: str, original_user_request
 **Original User Request:**
 {original_user_request}
 {memory_context}
+**TASK PROGRESS & KNOWLEDGE:**
+{task_context}
+{progress_context}
+**CRITICAL DECISION GUIDANCE:**
+- Review the TASK PROGRESS above - what have you already accomplished?
+- Check the AUTOMATED PROGRESS ANALYSIS - does it suggest you should continue or finish?
+- Are you about to repeat an action that was already successful? 
+- What is the LOGICAL NEXT STEP based on accumulated knowledge?
+- Has the overall user request been sufficiently addressed?
+
 **Conversation History:**
 {history_str}
 
 Your task is to analyze the observation in conversation history and decide whether the user request has been fulfilled or if further action is needed.
+
+**DECISION RULES:**
+1. If you have ENOUGH information to complete the user's request → **"finish"**
+2. If you need ONE MORE logical step → **"continue"** 
+3. If you're about to repeat a successful action → **"finish"** or choose different action
+4. If there was an error → **"error"**
 If the observation is from a `run_shell_command`, you should parse the `stdout` to find the relevant information. 
 If the original user request has been fully addressed and completed, you MUST return 'finish'. You have three choices for the 'decision' key in your JSON response:
 
@@ -286,6 +356,29 @@ If the original user request has been fully addressed and completed, you MUST re
     }
 })}
 
+**CRITICAL: STEP-BY-STEP IMAGE SORTING WORKFLOW**
+When asked to sort images by species/content, follow this EXACT sequence:
+
+**Step 1**: List directory to see all images
+{json.dumps({"tool": "list_directory", "args": {"path": "assets/images/folder"}})}
+
+**Step 2**: Analyze the FIRST image to identify what species/type it is
+{json.dumps({"tool": "describe_image", "args": {"image_path": "assets/images/folder/image1.jpg", "question": "What animal species is shown in this image?"}})}
+
+**Step 3**: Find similar images to form the first group
+{json.dumps({"tool": "find_similar_images", "args": {"image_path": "assets/images/folder/image1.jpg", "search_directory": "assets/images/folder", "top_k": 10, "threshold": 0.7}})}
+
+**Step 4**: Pick an image NOT in the first group and analyze it
+{json.dumps({"tool": "describe_image", "args": {"image_path": "assets/images/folder/image3.jpg", "question": "What animal species is shown in this image?"}})}
+
+**Step 5**: Find similar images to form the second group  
+{json.dumps({"tool": "find_similar_images", "args": {"image_path": "assets/images/folder/image3.jpg", "search_directory": "assets/images/folder", "top_k": 10, "threshold": 0.7}})}
+
+**Step 6**: Continue until all images are grouped, then create directories and organize files
+
+**NEVER repeat the same find_similar_images on an image you already clustered!**
+Always pick the next unclustered image for analysis.
+
 **Example Finish:**
 {json.dumps({
     "decision": "finish",
@@ -301,7 +394,7 @@ If the original user request has been fully addressed and completed, you MUST re
 Now, analyze the conversation history and generate the appropriate JSON response.
 """
 
-def get_reflexion_prompt_with_tools(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool, error_observation: str, tool_docs: str, relevant_memories: list = None) -> str:
+def get_reflexion_prompt_with_tools(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool, error_observation: str, tool_docs: str, relevant_memories: list = None, progress_analysis: dict = None) -> str:
     """
     Enhanced reflexion prompt that includes detailed tool documentation when tool errors are detected.
     """
@@ -320,6 +413,16 @@ def get_reflexion_prompt_with_tools(history: list, current_goal: str, original_u
             memory_context += f"{i}. {memory}\n"
         memory_context += "\nUse these past experiences to avoid repeating the same mistakes and learn from previous tool errors.\n"
 
+    # CRITICAL: Include task memory context for better error recovery
+    task_context = get_task_context_string()
+    
+    # Include progress analysis if available
+    progress_context = ""
+    if progress_analysis:
+        progress_context = f"\n**AUTOMATED PROGRESS ANALYSIS:**\n"
+        progress_context += f"Should Continue: {progress_analysis.get('should_continue', True)}\n"
+        progress_context += f"Analysis: {progress_analysis.get('reason', '')}\n"
+
     return f"""You are a ReAct-style agent. You have just performed an action that resulted in a TOOL ERROR.
 
 {persona}
@@ -333,6 +436,16 @@ def get_reflexion_prompt_with_tools(history: list, current_goal: str, original_u
 **Last Error Observation:**
 {error_observation}
 {memory_context}
+**TASK PROGRESS & KNOWLEDGE:**
+{task_context}
+{progress_context}
+**CRITICAL ERROR RECOVERY GUIDANCE:**
+- Check TASK PROGRESS above - can you work around this error using existing knowledge?
+- Check the AUTOMATED PROGRESS ANALYSIS - does it suggest alternative approaches?
+- Have you already succeeded at similar actions that could substitute for this failed one?
+- Is there an alternative approach based on what you've already learned?
+- Can you complete the user's request despite this error?
+
 **Conversation History:**
 {history_str}
 
