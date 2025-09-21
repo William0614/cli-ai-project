@@ -1,4 +1,4 @@
-# CLI AI Project
+# Multimodal CLI Agent
 
 An intelligent command-line assistant with advanced ReAct reasoning, vision capabilities, and sophisticated memory management.
 
