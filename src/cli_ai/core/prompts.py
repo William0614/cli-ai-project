@@ -1,11 +1,85 @@
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from ..tools.tools import tools_schema, get_tool_docstrings
 
-def get_need_assessment_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]], voice_input_enabled: bool) -> str:
+
+# Task memory for preventing redundant actions within a task
+_current_task_memory = {
+    "task_id": None,
+    "original_request": "",
+    "actions_taken": [],
+    "knowledge": {},
+    "current_goal": ""
+}
+
+
+def reset_task_memory(task_description: str = ""):
+    """Reset task memory for a new task."""
+    global _current_task_memory
+    _current_task_memory = {
+        "task_id": f"task_{len(_current_task_memory.get('actions_taken', []))}",
+        "original_request": task_description,
+        "actions_taken": [],
+        "knowledge": {},
+        "current_goal": ""
+    }
+
+
+def add_action_to_memory(tool: str, args: dict, thought: str, goal: str, result: dict = None):
+    """Add an action to the current task memory."""
+    action = {
+        "tool": tool,
+        "args": args,
+        "thought": thought,
+        "goal": goal,
+        "result": result,
+        "timestamp": "now"  # Would be datetime in real implementation
+    }
+    _current_task_memory["actions_taken"].append(action)
+    _current_task_memory["current_goal"] = goal
+
+
+def update_task_knowledge(key: str, value: Any):
+    """Update accumulated knowledge for the current task."""
+    _current_task_memory["knowledge"][key] = value
+
+
+def get_task_context_string() -> str:
+    """Get a formatted string of current task context."""
+    if not _current_task_memory["actions_taken"]:
+        return "No actions taken yet in this task."
+    
+    context = f"Task: {_current_task_memory['original_request']}\n"
+    context += f"Current Goal: {_current_task_memory['current_goal']}\n"
+    context += f"Actions Taken: {len(_current_task_memory['actions_taken'])}\n"
+    
+    if _current_task_memory["knowledge"]:
+        context += "Knowledge Accumulated:\n"
+        for key, value in _current_task_memory["knowledge"].items():
+            context += f"  {key}: {str(value)[:100]}{'...' if len(str(value)) > 100 else ''}\n"
+    
+    # Show recent actions to prevent redundancy
+    recent_actions = _current_task_memory["actions_taken"][-3:] if _current_task_memory["actions_taken"] else []
+    if recent_actions:
+        context += "Recent Actions:\n"
+        for i, action in enumerate(recent_actions, 1):
+            context += f"  {i}. {action['tool']}({action['args']}) - {action['thought']}\n"
+    
+    return context
+
+
+def has_performed_action(tool: str, args: dict = None) -> bool:
+    """Check if a similar action has already been performed in this task."""
+    for action in _current_task_memory["actions_taken"]:
+        if action["tool"] == tool:
+            if args is None or action["args"] == args:
+                return True
+    return False
+
+def get_react_system_prompt(history: list, current_working_directory: str, recalled_memories: List[Dict[str, Any]], voice_input_enabled: bool) -> str:
     """
-    Phase 1: Determine if the user request needs tools or can be answered directly.
-    This reduces tool hallucinations by separating need assessment from tool selection.
+    Returns the system prompt for the ReAct agent.
+    This prompt instructs the LLM to create a single thought and action.
     """
     history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
     
@@ -13,10 +87,16 @@ def get_need_assessment_prompt(history: list, current_working_directory: str, re
     if recalled_memories:
         memories_list = [f"- {m['content']} (timestamp: {m['timestamp']})" for m in recalled_memories]
         memories_str = "\n".join(memories_list)
-    
-    persona = "You are voice enabled. You interact with the user by speaking aloud." if voice_input_enabled else "You interact with the user through command line text interface."
+    if voice_input_enabled:
+        persona = "You are voice enabled. You interact with the user by speaking aloud. When you provide information or ask a question, you are speaking directly to them."
+    else:
+        persona = "You interact with the user through command line text interface."
 
-    return f"""You are an expert autonomous agent that analyzes user requests to determine if tools are needed.
+    # Add task context to prevent redundant actions
+    task_context = get_task_context_string()
+
+    return f"""You are an expert autonomous agent that functions as a ReAct-style agent.
+Your primary role is to analyze a user's request and the conversation history, and then decide on the single next best action to take.
 
 {persona}
 
@@ -25,104 +105,116 @@ def get_need_assessment_prompt(history: list, current_working_directory: str, re
 **Recalled Memories:**
 {memories_str}
 
+**Task Context (to prevent redundant actions):**
+{task_context}
+
 **Conversation History:**
 {history_str}
 
 **Your Task:**
-Analyze the user's latest request and determine if it needs tools to complete or can be answered directly with text.
+Based on the user's latest request and the conversation history, generate a JSON object with your thought and the next action to take. 
 
-**Guidelines for Direct Response (no tools needed):**
-- Simple questions, greetings, explanations
-- General knowledge queries
-- Conversations that don't require system interaction
-- Clarifications or confirmations
+**IMPORTANT: Before choosing a tool, consider:**
+1. What exactly does the user want to achieve?
+2. What tools are available to me?
+3. What is the logical sequence of steps needed?
+4. Which tool should I use for the NEXT step?
 
-**Guidelines for Tool Usage (tools needed):**
-- File operations (read, write, list)
-- Shell commands or system tasks
-- Image analysis or processing
-- Directory operations
-- Any task requiring system interaction
+**IMPORTANT: If a user request is ambiguous or lacks necessary details, ask for clarification using the "text" response. Keep clarification questions short and natural.**
 
-**Response Format:**
-Return a JSON object with these exact keys:
+You have two choices for the top-level key in the JSON response:
 
-{{
-    "needs_tools": boolean,
-    "reasoning": "Brief explanation of your decision",
-    "response": "If needs_tools is false, provide the direct response here. If true, leave empty."
-}}
+1.  **"text"**: If the user's request is a simple question, a greeting, or can be answered directly without tools, use this key. The value should be the response string.
+    Example: {json.dumps({"text": "Hello! How can I help you today?"})}
 
-**Examples:**
+2.  **"action" and "original_user_request"**: If the request requires a tool, your JSON response **MUST** cotain these two top-level keys.  
+    *   **`original_user_request`**: A string containing the verbatim user prompt that initiated the current task. You must look back in the conversation history to find the root of the request, 
+    especially if the last message was a clarification. The value should be a dictionary containing the tool to use and the arguments.
+    *   **`action`**: A dictionary containing the following keys:
+        *   **"thought"**: A brief description of what you are trying to do.
+        *   **"current_goal"**: A concise statement of the specific goal this action aims to achieve. This should be a sub-goal of the overall user request.
+        *   **"tool"**: The name of the tool to use. You **MUST ONLY** use the tools defined in the schema below.
+        *   **"args"**: A dictionary of arguments for the tool. **USE EXACT PARAMETER NAMES FROM SCHEMA.**
+        *   **"is_critical"**: (REQUIRED) A boolean field that determines if user confirmation is needed before execution.
+            **Determining `is_critical`:**
+            *   `write_file`: Always `true`.
+            *   `run_shell_command`: `true` if the command modifies the system or data (e.g., `rm`, `sudo`, `mv`, `delete`, `format`, `kill`, `reboot`, `shutdown`, `apt remove`, `npm uninstall`, `pip uninstall`, `git commit`, `git push`). Otherwise, `false` (e.g., `ls`, `pwd`, `echo`, `git status`, `git log`).
+            *   All other tools (`read_file`, `list_directory`, `describe_image`, `find_similar_images`): Always `false`.
 
-Direct response (no tools):
-{json.dumps({"needs_tools": False, "reasoning": "This is a greeting that requires no system interaction", "response": "Hello! How can I help you today?"})}
+    **Example Action (List Directory):**
+    {json.dumps({
+        "original_user_request": "Can you show me the files in the current directory?",
+        "action": {
+            "thought": "I need to list the files in the current directory.",
+            "current_goal": "List all files in the current directory",
+            "tool": "list_directory",
+            "args": {"path": "."},
+            "is_critical": False
+        }
+    })}
 
-Needs tools:
-{json.dumps({"needs_tools": True, "reasoning": "User wants to list files, which requires the list_directory tool", "response": ""})}
+    **Example Action (Write File):**
+    {json.dumps({
+        "original_user_request": "Can you create a file named 'report.txt' with some content?",
+        "action": {
+            "thought": "I need to create a new file named 'report.txt' and write some content into it.",
+            "current_goal": "Create a file named 'report.txt' with specified content.",
+            "tool": "write_file",
+            "args": {"file_path": "report.txt", "content": "This is the content of the report."},
+            "is_critical": True
+        }
+    })}
 
-Analyze the user's request now and respond with the JSON format above.
-"""
+    **Example Action (Delete File - CRITICAL):**
+    {json.dumps({
+        "original_user_request": "Please delete the old_file.txt",
+        "action": {
+            "thought": "I need to delete the file 'old_file.txt' as requested.",
+            "current_goal": "Delete old_file.txt from the system.",
+            "tool": "run_shell_command",
+            "args": {"command": "rm old_file.txt"},
+            "is_critical": True
+        }
+    })}
 
-def get_tool_selection_prompt(history: list, current_working_directory: str, original_user_request: str, voice_input_enabled: bool) -> str:
-    """
-    Phase 2: Select appropriate tools to complete the task.
-    Only called when Phase 1 determines tools are needed.
-    """
-    history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
-    
-    persona = "You are voice enabled." if voice_input_enabled else "You are text-based."
+    **Example Action (Describe Image):**
+    {json.dumps({
+        "original_user_request": "What does the image abc123.jpg show?",
+        "action": {
+            "thought": "I need to analyze the specific image file to describe what it shows.",
+            "current_goal": "Describe the content of abc123.jpg.",
+            "tool": "describe_image",
+            "args": {
+                "image_path": "./image/abc123.jpg",
+                "question": "What is in this image?"
+            },
+            "is_critical": False
+        }
+    })}
 
-    return f"""You are an expert autonomous agent that executes tasks using available tools.
-
-{persona}
-
-**Current Working Directory:** {current_working_directory}
-
-**Original User Request:** {original_user_request}
-
-**Conversation History:**
-{history_str}
+    **Example Action (Find Similar Images):**
+    {json.dumps({
+        "original_user_request": "Find similar images to the first image in the images folder.",
+        "action": {
+            "thought": "I need to find images visually similar to 'image/first_image.jpg' in the images folder.",
+            "current_goal": "Find the top 5 similar images.",
+            "tool": "find_similar_images",
+            "args": {
+                "image_path": "image/first_image.jpg",
+                "search_directory": "image",
+                "top_k": 5,
+                "threshold": 0.5
+            },
+            "is_critical": False
+        }
+    })}
 
 **Available Tools:**
 {json.dumps(tools_schema, indent=2)}
 
-**Your Task:**
-The user request requires tools to complete. Analyze the available tools and determine:
-1. Can you complete this task with the available tools?
-2. What is the next action to take?
+**CRITICAL: Use ONLY the tools listed above. For images use 'describe_image' and 'find_similar_images'.**
 
-**CRITICAL: Use ONLY the tools listed above with their EXACT parameter names.**
-
-**Response Format:**
-Return a JSON object with one of these structures:
-
-**If you CAN complete the task:**
-{{
-    "can_complete": true,
-    "original_user_request": "{original_user_request}",
-    "action": {{
-        "thought": "Brief description of what you are trying to do",
-        "current_goal": "Specific goal this action aims to achieve",
-        "tool": "exact_tool_name_from_schema",
-        "args": {{"exact_parameter_name": "value"}},
-        "is_critical": true/false
-    }}
-}}
-
-**If you CANNOT complete the task:**
-{{
-    "can_complete": false,
-    "reasoning": "Explanation of why the task cannot be completed with available tools",
-    "suggestion": "Alternative suggestion for the user"
-}}
-
-**Critical Instructions for is_critical field:**
-- write_file: always true
-- run_shell_command: true for destructive operations (rm, sudo, mv, delete, format, kill), false for safe operations (ls, pwd, echo, git status)
-- All other tools (read_text_file, list_directory, describe_image, find_similar_images): always false
-
-Generate your response now.
+Now, analyze the user's request and generate the appropriate JSON response.
 """
 
 def get_reflexion_prompt(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool, relevant_memories: list = None) -> str:

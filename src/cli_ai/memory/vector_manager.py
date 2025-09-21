@@ -1,5 +1,5 @@
 """
-Vector Memory Manager for Smart Memory Phase 2
+Vector Memory Manager for Smart Memory
 Handles overflow storage and RAG retrieval using existing FAISS infrastructure
 """
 

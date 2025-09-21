@@ -25,10 +25,19 @@ class SessionMemoryManager:
         self.max_recent_length = max_recent_length
         self.session_id = self._generate_session_id()
         self.message_count = 0
+        self.tool_execution_mode = False  # Prevent overflow during tool execution
         
     def _generate_session_id(self) -> str:
         """Generate unique session ID."""
         return f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    def set_tool_execution_mode(self, enabled: bool) -> None:
+        """Enable or disable tool execution mode to prevent overflow during active tool use."""
+        self.tool_execution_mode = enabled
+        if enabled:
+            print(f"[Smart Memory] Tool execution mode enabled - overflow paused")
+        else:
+            print(f"[Smart Memory] Tool execution mode disabled - overflow resumed")
     
     def add_exchange(
         self, 
@@ -73,8 +82,9 @@ class SessionMemoryManager:
         self.message_count += 2
         
         # Check for overflow - handle in pairs to maintain conversation integrity
+        # But skip overflow during tool execution mode to maintain context
         overflow_messages = None
-        if len(self.recent_messages) > self.max_recent_length:
+        if len(self.recent_messages) > self.max_recent_length and not self.tool_execution_mode:
             # Calculate how many messages to overflow
             overflow_count = len(self.recent_messages) - self.max_recent_length
             
@@ -129,8 +139,9 @@ class SessionMemoryManager:
         self.message_count += 1
         
         # Check for overflow - maintain pairs for single messages too
+        # But skip overflow during tool execution mode
         overflow_messages = None
-        if len(self.recent_messages) > self.max_recent_length:
+        if len(self.recent_messages) > self.max_recent_length and not self.tool_execution_mode:
             overflow_count = len(self.recent_messages) - self.max_recent_length
             
             # For single message additions, we might break pairs

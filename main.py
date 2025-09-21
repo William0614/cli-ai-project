@@ -3,9 +3,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import asyncio
 import json
 from datetime import datetime
-from src.cli_ai.core.ai_engine import think_two_phase, reflexion, speak_text_openai, classify_intent
-from src.cli_ai.workspace.engine import WorkspaceAwareEngine
-from src.cli_ai.workspace.core import WorkspaceManager
+from src.cli_ai.core.ai_engine import think, reflexion, speak_text_openai, classify_intent
 from src.cli_ai.tools.executor import execute_tool
 from src.cli_ai.tools.audio.speech_to_text import get_voice_input_whisper
 from src.cli_ai.utils.spinner import Spinner
@@ -48,18 +46,11 @@ async def main():
     session_memory = SessionMemoryManager(max_recent_length=20)  # Increased from 6 to 20 for tool execution
     vector_memory = VectorMemoryManager()
     user_info = UserInfoManager()
-    
-    # Initialize workspace system for smart task management
-    workspace_manager = WorkspaceManager()
-    workspace_engine = WorkspaceAwareEngine(workspace_manager)
-    
     print(Fore.GREEN + f"[Smart Memory] Session started: {session_memory.session_id}")
     print(Fore.GREEN + f"[Vector Memory] Connected to vector database")
     print(Fore.GREEN + f"[User Info] Automatic extraction enabled")
-    print(Fore.GREEN + f"[Agent Workspace] Task memory system initialized")
     
     voice_input_enabled = False  # Voice input is off by default
-    current_task_id = None  # Track current task for workspace continuity
 
     while True:
         user_input, voice_input_enabled = await get_user_input(voice_input_enabled)
@@ -84,11 +75,9 @@ async def main():
                 
                 print(Fore.BLUE + f"[Flush] Discarding {len(current_messages)} conversation messages")
             
-            # Clear session memory and reset workspace state
+            # Clear session memory
             session_memory.recent_messages.clear()
             session_memory.message_count = 0
-            current_task_id = None  # Reset task context
-            workspace_engine.cleanup_completed_workspaces(max_age_hours=1)  # Cleanup old workspaces
             print(Fore.YELLOW + "[Session Flushed] Conversation history forgotten. User preferences preserved.")
             continue
         intent = await classify_intent(user_input)
@@ -127,13 +116,7 @@ async def main():
         spinner.start()
         # Get recent messages for AI context (now includes retrieved memories from vector storage)
         history = session_memory.get_recent_messages_for_ai()
-        
-        # Use workspace-aware thinking for better task management
-        decision, task_id = await workspace_engine.think_with_workspace(
-            history, current_working_directory, voice_input_enabled, user_info, vector_memory, current_task_id
-        )
-        current_task_id = task_id  # Update current task tracking
-        
+        decision = await think(history, current_working_directory, voice_input_enabled, user_info, vector_memory)
         spinner.stop()
 
         if "text" in decision:
@@ -183,10 +166,6 @@ async def main():
 
         elif "action" in decision:
             action = decision["action"]
-            current_goal = action.get("current_goal", "No specific goal provided for this action.") # Extract current_goal
-            
-            # Get workspace action ID for tracking
-            workspace_action_id = decision.get("_workspace_action_id")
             
             # Enable tool execution mode to prevent memory overflow during tool use
             session_memory.set_tool_execution_mode(True)
@@ -218,17 +197,13 @@ async def main():
                 observation = await execute_tool(action["tool"], action["args"])
                 spinner.stop()
                 
-                # Record action result in workspace for learning
-                if workspace_action_id and current_task_id:
-                    status = "Success" if observation.get("status") != "Error" else "Error"
-                    workspace_engine.record_action_result(
-                        current_task_id, workspace_action_id, status, observation
-                    )
+                # Record action result in task memory for learning
+                from src.cli_ai.core.ai_engine import record_action_result
+                record_action_result(action["tool"], action["args"], observation)
 
                 # Consolidated output
                 output_block = f"""
 {Fore.YELLOW}Thought: {action['thought']}
-{Fore.BLUE}Current Goal: {current_goal}
 {Fore.CYAN}Action: {action['tool']}({action['args']})
 {Fore.GREEN}Observation: {observation}
 """
@@ -247,7 +222,7 @@ async def main():
                     action=action['tool'],
                     args=action['args'],
                     observation=observation,
-                    metadata={"current_goal": current_goal, "action_type": "tool_execution"}
+                    metadata={"action_type": "tool_execution"}
                 )
                 
                 if action_overflow:
@@ -264,10 +239,11 @@ async def main():
                 # Get current conversation history for reflexion
                 current_history = session_memory.get_recent_messages_for_ai()
                 
-                # Use workspace-aware reflexion for better decision making
-                reflection = await workspace_engine.reflexion_with_workspace(
-                    current_history, current_goal, original_user_request, voice_input_enabled, current_task_id, vector_memory
-                )
+                # Get current goal from task memory
+                from src.cli_ai.core.prompts import _current_task_memory
+                current_goal = _current_task_memory.get("current_goal", "Execute user request")
+                
+                reflection = await reflexion(current_history, current_goal, original_user_request, voice_input_enabled, vector_memory)
                 spinner.stop()
                 spinner.set_message("Thinking...")
                 
@@ -329,14 +305,8 @@ async def main():
                     else:
                         print(Fore.CYAN + reflection["comment"])
                     
-                    # Update action and current_goal for the next iteration
+                    # Update action for the next iteration  
                     action = reflection["next_action"]
-                    # Get workspace action ID for tracking next action
-                    workspace_action_id = action.get("_workspace_action_id")
-                    # Update current_goal if provided in the next_action
-                    if "current_goal" in action:
-                        current_goal = action["current_goal"]
-                        print(Fore.YELLOW + f"[Goal Updated] {current_goal}")
         else:
             error_msg = f"Sorry, I received an unexpected decision format: {decision}"
             if voice_input_enabled:

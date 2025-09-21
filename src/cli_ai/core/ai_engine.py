@@ -2,7 +2,7 @@ import os
 import json
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
-from .prompts import get_reflexion_prompt, get_final_summary_prompt, get_reflexion_prompt_with_tools, get_need_assessment_prompt, get_tool_selection_prompt
+from .prompts import get_react_system_prompt, get_reflexion_prompt, get_final_summary_prompt, get_reflexion_prompt_with_tools
 from ..utils.os_helpers import get_os_info
 import soundfile as sf
 import sounddevice as sd
@@ -63,13 +63,15 @@ def get_latest_user_input(history: list) -> str:
             return message["content"]
     return ""
 
-async def think_two_phase(history: list, current_working_directory: str, voice_input_enabled: bool, user_info_manager=None, vector_memory_manager=None) -> dict:
-    """
-    NEW: Two-phase thinking approach to reduce tool hallucinations.
-    Phase 1: Assess if tools are needed
-    Phase 2: If needed, select appropriate tools
-    """
+async def think(history: list, current_working_directory: str, voice_input_enabled: bool, user_info_manager=None, vector_memory_manager=None) -> dict:
+    """Creates a thought and action using the ReAct prompt with relevant memory retrieval and task context."""
+    from .prompts import get_task_context_string, reset_task_memory, _current_task_memory
+    
     latest_user_message = get_latest_user_input(history)
+    
+    # Initialize task memory if this seems like a new task
+    if not _current_task_memory["original_request"] or not _current_task_memory["actions_taken"]:
+        reset_task_memory(latest_user_message)
     
     # Get relevant memories from vector database
     recalled_memories = []
@@ -101,66 +103,71 @@ async def think_two_phase(history: list, current_working_directory: str, voice_i
                     'timestamp': info.get('timestamp', 'user_info')
                 })
 
-    # PHASE 1: Assess if tools are needed
-    phase1_prompt = (
-        "You are a cli-assistant that analyzes user requests.\n" + 
+    BASE_PROMPT = "You are a cli-assistant that performs user's tasks with the tools you have."
+    system_prompt = (
+        BASE_PROMPT + "\n" + 
         get_os_info() + "\n" + 
-        get_need_assessment_prompt(history, current_working_directory, recalled_memories, voice_input_enabled)
+        get_react_system_prompt(history, current_working_directory, recalled_memories, voice_input_enabled)
     )
 
-    print_prompt_debug(phase1_prompt, latest_user_message, "PHASE 1: NEED ASSESSMENT")
+    # Debug: Print the complete prompt being sent to LLM
+    print_prompt_debug(system_prompt, latest_user_message, "MAIN THINK FUNCTION")
 
     try:
-        phase1_response = await get_client().chat.completions.create(
+        response = await get_client().chat.completions.create(
             model="gpt-5-mini",
             messages=[
-                {"role": "system", "content": phase1_prompt},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": latest_user_message}
             ],
             response_format={"type": "json_object"}
         )
         
-        phase1_result = json.loads(phase1_response.choices[0].message.content)
+        raw_response_content = response.choices[0].message.content
+        decision = json.loads(raw_response_content)
         
-        # If no tools needed, return direct response
-        if not phase1_result.get("needs_tools", False):
-            return {"text": phase1_result.get("response", "I understand, but I don't have a specific response.")}
+        # If this is an action, record it in task memory for future context
+        if "action" in decision:
+            from .prompts import add_action_to_memory
+            action = decision["action"]
+            add_action_to_memory(
+                tool=action.get("tool", "unknown"),
+                args=action.get("args", {}),
+                thought=action.get("thought", ""),
+                goal=action.get("current_goal", ""),
+                result=None  # Will be updated when action completes
+            )
         
-        # PHASE 2: Select appropriate tools
-        phase2_prompt = (
-            "You are a cli-assistant that executes tasks with available tools.\n" + 
-            get_os_info() + "\n" + 
-            get_tool_selection_prompt(history, current_working_directory, latest_user_message, voice_input_enabled)
-        )
-
-        print_prompt_debug(phase2_prompt, latest_user_message, "PHASE 2: TOOL SELECTION")
-
-        phase2_response = await get_client().chat.completions.create(
-            model="gpt-5-mini",
-            messages=[
-                {"role": "system", "content": phase2_prompt},
-                {"role": "user", "content": latest_user_message}
-            ],
-            response_format={"type": "json_object"}
-        )
+        # Note: save_to_memory removed - UserInfo extraction is now automatic
         
-        phase2_result = json.loads(phase2_response.choices[0].message.content)
-        
-        # If tools can't complete the task, return explanation
-        if not phase2_result.get("can_complete", False):
-            return {
-                "text": f"I cannot complete this task with the available tools. {phase2_result.get('reasoning', '')} {phase2_result.get('suggestion', '')}"
-            }
-        
-        # Return the action from phase 2
-        return {
-            "action": phase2_result["action"],
-            "original_user_request": phase2_result.get("original_user_request", latest_user_message)
-        }
+        return decision
 
     except Exception as e:
-        print(f"Error in two-phase thinking: {e}")
-        return {"text": "Sorry, an error occurred while processing your request."}
+        print(f"Error: {e}")
+        return {"text": "Sorry, an error occurred."}
+
+
+def record_action_result(tool: str, args: dict, result: dict):
+    """Record the result of an action in task memory."""
+    from .prompts import _current_task_memory, update_task_knowledge
+    
+    # Update the most recent action with the result
+    if _current_task_memory["actions_taken"]:
+        last_action = _current_task_memory["actions_taken"][-1]
+        if last_action["tool"] == tool and last_action["args"] == args:
+            last_action["result"] = result
+    
+    # Extract useful knowledge from the result
+    if result and result.get("status") == "Success":
+        output = result.get("output", {})
+        
+        # For directory listings, store the file list
+        if tool == "list_directory" and "result" in output:
+            update_task_knowledge(f"files_in_{args.get('path', 'unknown')}", output["result"])
+        
+        # For image descriptions, store the analysis
+        if tool == "describe_image" and "response" in output:
+            update_task_knowledge(f"image_analysis_{args.get('image_path', 'unknown')}", output["response"])
 
 async def reflexion(history: list, current_goal: str, original_user_request: str, voice_input_enabled: bool, vector_memory_manager=None) -> str:
     """Asks the LLM to reflect on the result of an action."""

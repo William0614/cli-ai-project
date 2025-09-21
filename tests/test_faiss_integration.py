@@ -4,10 +4,10 @@ import sys
 import numpy as np
 
 # Add the project directory to the Python path to allow imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__))))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import memory_system as memory
-import database as db
+from src.cli_ai.agents import memory_system as memory
+from src.cli_ai.utils import database as db
 
 async def test_faiss_recall():
     print("--- Initializing Database ---")

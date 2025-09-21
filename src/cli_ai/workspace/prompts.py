@@ -9,38 +9,56 @@ import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from .core import TaskWorkspace
+from ..tools.tools import tools_schema, get_tool_docstrings
 
 
 def get_workspace_aware_need_assessment_prompt(
     history: list, 
     current_working_directory: str, 
-    recalled_memories: List[Dict[str, Any]], 
+    recalled_memories: list, 
     voice_input_enabled: bool,
     workspace: Optional[TaskWorkspace] = None
 ) -> str:
     """
-    Enhanced Phase 1 prompt that includes workspace context for smarter need assessment.
+    Enhanced Phase 1 prompt that includes workspace context to prevent redundant actions.
     """
     history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
     
-    memories_str = ""
-    if recalled_memories:
-        memories_list = [f"- {m['content']} (timestamp: {m['timestamp']})" for m in recalled_memories]
-        memories_str = "\n".join(memories_list)
+    persona = "You are voice enabled." if voice_input_enabled else "You are text-based."
     
-    persona = "You are voice enabled. You interact with the user by speaking aloud." if voice_input_enabled else "You interact with the user through command line text interface."
+    memory_context = ""
+    if recalled_memories:
+        memory_context = "\n**Recalled Memories:**\n"
+        for memory in recalled_memories:
+            memory_context += f"- {memory}\n"
 
-    # Add workspace context
+    # Add workspace context to prevent redundant actions
     workspace_context = ""
+    redundancy_check = ""
     if workspace:
         workspace_context = f"""
 **Task Workspace Context:**
-{workspace.get_progress_summary()}
+Task: {workspace.original_request}
+Current Goal: {workspace.current_goal}
+Actions Taken: {len(workspace.actions_taken)}
+Status: {workspace.progress_state}
 
-**Previous Actions & Results:**
-{workspace.get_action_history_summary()}
+Accumulated Knowledge:
+"""
+        for key, value in workspace.accumulated_knowledge.items():
+            workspace_context += f"  {key}: {value}\n"
 
-**IMPORTANT: Review the workspace context above before deciding on actions. If you already have the information you need from previous actions, don't repeat them!**
+        # Recent actions summary
+        if workspace.actions_taken:
+            workspace_context += "\nRecent Actions:\n"
+            for action in workspace.actions_taken[-3:]:  # Last 3 actions
+                workspace_context += f"  - {action.tool}({action.args}) -> {action.thought}\n"
+
+        redundancy_check = """
+**CRITICAL - AVOID REDUNDANCY:**
+- If the workspace shows you've already done a similar action, don't repeat it
+- Use accumulated knowledge instead of re-gathering the same information
+- Build on previous actions rather than starting over
 """
 
     return f"""You are an expert autonomous agent that analyzes user requests to determine if tools are needed.
@@ -50,40 +68,33 @@ def get_workspace_aware_need_assessment_prompt(
 **Current Working Directory:** {current_working_directory}
 
 **Recalled Memories:**
-{memories_str}
+{memory_context}
 {workspace_context}
-**Conversation History:**
+{redundancy_check}
+
+**Previous Conversation:**
 {history_str}
 
-**Your Task:**
-Analyze the user's latest request and determine if it needs tools to complete or can be answered directly with text.
+Your task is to determine if the current user request requires tools to complete, or if it can be answered directly with a text response.
 
-**WORKSPACE-AWARE GUIDELINES:**
-- **Check workspace first**: If the workspace contains relevant information from previous actions, use it instead of repeating actions
-- **Direct Response**: Simple questions, greetings, explanations that don't require tools OR when workspace already contains the needed information
-- **Needs Tools**: File operations, shell commands, image analysis, directory listings ONLY if not already done or if new information is needed
+**Analysis Framework:**
+1. **Check Workspace First**: Review any previous actions and accumulated knowledge
+2. **Information Needs**: What information is required to answer the user?
+3. **Tool Requirements**: Do you need to gather data, perform actions, or can you respond directly?
+4. **Redundancy Check**: Has this information already been gathered in the workspace?
 
-**Response Format:**
-Return a JSON object with these exact keys:
+**Response Format (JSON only):**
 
-{{
-    "needs_tools": boolean,
-    "reasoning": "Brief explanation of your decision, mentioning workspace context if relevant",
-    "response": "If needs_tools is false, provide the direct response here. If true, leave empty."
-}}
+For requests that can be answered directly:
+{json.dumps({"needs_tools": False, "reasoning": "The workspace already contains a list of files from previous list_directory action", "response": "Based on the directory listing I performed earlier, the assets/images folder contains 15 image files including cats, dogs, and landscapes."})}
 
-**Examples:**
-
-Direct response using workspace knowledge:
-{json.dumps({"needs_tools": False, "reasoning": "The workspace already contains a list of files from previous list_directory action", "response": "Based on the directory listing I performed earlier, the assets/images folder contains 14 image files including various animal photos."})}
-
-Direct response (simple question):
+For simple questions or greetings:
 {json.dumps({"needs_tools": False, "reasoning": "This is a greeting that requires no system interaction", "response": "Hello! How can I help you today?"})}
 
-Needs tools (new action required):
+For requests requiring tools:
 {json.dumps({"needs_tools": True, "reasoning": "User wants to analyze image content, which requires the describe_image tool", "response": ""})}
 
-Analyze the user's request now and respond with the JSON format above.
+Analyze the request considering workspace context and respond with appropriate JSON.
 """
 
 
@@ -107,96 +118,82 @@ def get_workspace_aware_tool_selection_prompt(
     if workspace:
         workspace_context = f"""
 **Current Task Workspace:**
-{workspace.get_progress_summary()}
+Task: {workspace.original_request}
+Current Goal: {workspace.current_goal}
 
 **Action History:**
 {workspace.get_action_history_summary()}
-"""
-        redundancy_check = """
+
 **CRITICAL - AVOID REDUNDANCY:**
 - Check the action history above before selecting a tool
-- If you've already performed the same action with the same parameters, DON'T repeat it
-- Use the results from previous actions that are available in the workspace
-- Only perform new actions if you need additional or different information
+- If you've already gathered information, use it instead of re-gathering
+- Build on previous work rather than repeating actions
+- Only list directories if you haven't done so recently for the same path
 """
 
-    # Import tools schema
-    from ..tools.tools import tools_schema
-
-    return f"""You are an expert autonomous agent that executes tasks using available tools.
+    return f"""You are an expert autonomous agent that executes tasks using available tools with workspace awareness.
 
 {persona}
 
 **Current Working Directory:** {current_working_directory}
-
-**Original User Request:** {original_user_request}
 {workspace_context}
-**Conversation History:**
-{history_str}
-{redundancy_check}
-**Available Tools:**
+
+**AVAILABLE TOOLS:**
 {json.dumps(tools_schema, indent=2)}
 
-**Your Task:**
+**Previous Conversation:**
+{history_str}
+
 The user request requires tools to complete. Analyze the available tools and workspace context to determine:
 1. Can you complete this task with the available tools?
-2. What is the next action to take (considering what's already been done)?
+2. What is the logical first/next action based on workspace history?
+3. Are you avoiding redundant actions?
 
-**WORKSPACE-AWARE TOOL SELECTION:**
-- Review action history to avoid repeating identical operations
-- Build upon previous results stored in the workspace
-- Select tools that advance the task toward completion
-- Consider the overall goal, not just the immediate step
-
-**Response Format:**
-Return a JSON object with one of these structures:
-
-**If you CAN complete the task:**
+If you CAN complete the task, respond with:
 {{
     "can_complete": true,
-    "original_user_request": "{original_user_request}",
     "action": {{
-        "thought": "Brief description considering workspace context and avoiding redundancy",
-        "current_goal": "Specific goal this action aims to achieve",
-        "tool": "exact_tool_name_from_schema",
-        "args": {{"exact_parameter_name": "value"}},
+        "thought": "What you're thinking and why this action makes sense given workspace context",
+        "current_goal": "The specific goal for this step",
+        "tool": "tool_name_here",
+        "args": {{"parameter1": "value1", "parameter2": "value2"}},
         "is_critical": true/false,
-        "workspace_reasoning": "Why this action is needed given the workspace context"
+        "original_user_request": "{original_user_request}"
     }}
 }}
 
-**If you CANNOT complete the task:**
+If you CANNOT complete the task, respond with:
 {{
     "can_complete": false,
     "reasoning": "Explanation of why the task cannot be completed with available tools",
-    "suggestion": "Alternative suggestion for the user"
+    "suggestion": "Alternative approach or request for clarification"
 }}
 
-**Critical Instructions for is_critical field:**
-- write_file: always true
-- run_shell_command: true for destructive operations (rm, sudo, mv, delete, format, kill), false for safe operations (ls, pwd, echo, git status)
-- All other tools (read_text_file, list_directory, describe_image, find_similar_images): always false
+**Critical Instructions:**
+- ONLY use tools from the available tools list above
+- Use EXACT parameter names as shown in the tools schema
+- Consider workspace context to avoid repeating successful actions
+- Build logically on previous actions and knowledge
 
-Generate your response now.
+Respond with JSON only.
 """
 
 
 def get_workspace_reflexion_prompt(
-    history: list, 
-    current_goal: str, 
-    original_user_request: str, 
+    history: list,
+    current_goal: str,
+    original_user_request: str,
     voice_input_enabled: bool,
     workspace: Optional[TaskWorkspace] = None,
     relevant_memories: list = None
 ) -> str:
     """
-    Enhanced reflexion prompt that considers workspace context for better planning.
+    Enhanced reflexion prompt with workspace awareness and tools schema.
     """
     history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
-
+    
     persona = "You are voice enabled." if voice_input_enabled else "You are text-based."
     
-    # Include relevant memories if available
     memory_context = ""
     if relevant_memories:
         memory_context = "\n**Relevant Past Experiences:**\n"
@@ -234,6 +231,10 @@ def get_workspace_reflexion_prompt(
 {original_user_request}
 {memory_context}
 {workspace_context}
+
+**AVAILABLE TOOLS:**
+{json.dumps(tools_schema, indent=2)}
+
 **Conversation History:**
 {history_str}
 {progress_analysis}
@@ -245,6 +246,7 @@ Your task is to analyze the observation and workspace context to decide whether 
 - Consider what information you've already gathered
 - Determine if you have enough to complete the original request
 - Plan logical next steps that build on previous work
+- ONLY use tools from the available tools list above with correct parameters
 
 You have three choices for the 'decision' key in your JSON response:
 
@@ -253,8 +255,8 @@ You have three choices for the 'decision' key in your JSON response:
     *   **"next_action"**: A dictionary containing the next tool to use and the arguments:
         *   **"thought"**: What you're trying to accomplish with this action
         *   **"current_goal"**: The UPDATED current goal for this next step
-        *   **"tool"**: The tool name to use
-        *   **"args"**: The arguments for the tool
+        *   **"tool"**: The tool name to use (MUST be from available tools above)
+        *   **"args"**: The arguments for the tool (MUST match tool schema)
         *   **"is_critical"**: Risk assessment (true for write_file, destructive commands; false for read operations)
         *   **"workspace_reasoning"**: How this action builds on workspace knowledge
 
