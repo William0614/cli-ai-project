@@ -1,7 +1,5 @@
 # Multimodal CLI Agent
 
-# Multimodal CLI Agent
-
 An intelligent command-line assistant with advanced ReAct reasoning, vision capabilities, and sophisticated memory management.
 
 ## 🚀 Features
@@ -34,7 +32,7 @@ An intelligent command-line assistant with advanced ReAct reasoning, vision capa
 ![CLI AI Agent System Architecture](https://github.com/William0614/multimodal-cli-agent/blob/main/assets/cli-ai-agent.png?raw=true)
 
 
-## 📁 Enhanced Project Structure
+## 📁 Project Structure
 
 ```
 multimodal-cli-agent/
