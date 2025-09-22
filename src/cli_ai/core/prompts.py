@@ -84,7 +84,7 @@ def get_task_context_string() -> str:
         context += f"\n📝 RECENT ACTIONS (avoid repeating):\n"
         for i, action in enumerate(recent_actions, 1):
             status = "✅" if action.get("result", {}).get("status") == "Success" else "❌"
-            args_summary = str(action['args']).replace('/Users/kimboyoon/Desktop/cli-ai-project/', '').replace('{"path": "', '').replace('"}', '')[:50]
+            args_summary = str(action['args']).replace('/Users/kimboyoon/Desktop/multimodal-cli-agent/', '').replace('{"path": "', '').replace('"}', '')[:50]
             context += f"  {status} {action['tool']}({args_summary}) → {action.get('result', {}).get('status', 'pending')}\n"
     
     # Add guidance for next steps

@@ -1,5 +1,7 @@
 # Multimodal CLI Agent
 
+# Multimodal CLI Agent
+
 An intelligent command-line assistant with advanced ReAct reasoning, vision capabilities, and sophisticated memory management.
 
 ## 🚀 Features
@@ -29,13 +31,13 @@ An intelligent command-line assistant with advanced ReAct reasoning, vision capa
 - **Extensible Tool System**: Modular architecture for adding new capabilities
 
 ## Agent Architecture
-![CLI AI Agent System Architecture](https://github.com/William0614/cli-ai-project/blob/main/assets/cli-ai-agent.png?raw=true)
+![CLI AI Agent System Architecture](https://github.com/William0614/multimodal-cli-agent/blob/main/assets/cli-ai-agent.png?raw=true)
 
 
 ## 📁 Enhanced Project Structure
 
 ```
-cli-ai-project/
+multimodal-cli-agent/
 ├── src/cli_ai/              # Main package
 │   ├── core/              
 │   │   ├── ai_engine.py     # ReAct engine with reflexion
@@ -73,8 +75,8 @@ cli-ai-project/
 
 1. **Clone and enter directory:**
    ```bash
-   git clone https://github.com/William0614/cli-ai-project.git
-   cd cli-ai-project
+   git clone https://github.com/William0614/multimodal-cli-agent.git
+   cd multimodal-cli-agent
    ```
 
 2. **Install dependencies:**

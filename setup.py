@@ -7,12 +7,12 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 setup(
-    name="cli-ai-project",
+    name="multimodal-cli-agent",
     version="0.1.0",
-    description="An intelligent command-line assistant with vision capabilities",
+    description="An intelligent command-line assistant with multimodal capabilities and advanced reasoning",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/William0614/cli-ai-project",
+    url="https://github.com/William0614/multimodal-cli-agent",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     classifiers=[
